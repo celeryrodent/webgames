@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Bubble Pop Paradise - Prototype</title>
+<style>
+  body{background:#071425;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+  #game{background:#0b1b2b;padding:10px;border-radius:8px}
+  canvas{display:block;background:linear-gradient(#032033,#071425);}
+  #hud{display:flex;justify-content:space-between;margin-top:8px}
+  button{padding:6px 10px}
+</style>
+</head>
+<body>
+<div id="game">
+  <canvas id="c" width="360" height="480"></canvas>
+  <div id="hud"><div>Score: <span id="score">0</span></div><button id="reset">Reset</button></div>
+</div>
+<script>
+const canvas=document.getElementById('c');const ctx=canvas.getContext('2d');
+const rows=9,cols=7;const size=40;const grid=[];const colors=['#ff6b6b','#ffd93d','#6be26b','#6bd3ff','#c56bff'];
+let score=0;function randColor(){return colors[Math.floor(Math.random()*colors.length)];}
+for(let r=0;r<rows;r++){grid[r]=[];for(let c=0;c<cols;c++)grid[r][c]={color:randColor(),x:c*size+10,y:r*size+10}} 
+function draw(){ctx.clearRect(0,0,canvas.width,canvas.height);for(let r=0;r<rows;r++){for(let c=0;c<cols;c++){const cell=grid[r][c];if(!cell)continue;ctx.fillStyle=cell.color;ctx.beginPath();ctx.arc(cell.x+size/2,cell.y+size/2,size*0.45,0,Math.PI*2);ctx.fill();}}}
+function flood(r,c,color,visited){if(r<0||c<0||r>=rows||c>=cols)return;const cell=grid[r][c];if(!cell||cell.color!==color||visited[r+'_'+c])return;visited[r+'_'+c]=true;flood(r+1,c,color,visited);flood(r-1,c,color,visited);flood(r,c+1,color,visited);flood(r,c-1,color,visited);} 
+canvas.addEventListener('click',e=>{const rect=canvas.getBoundingClientRect();const mx=e.clientX-rect.left, my=e.clientY-rect.top;const c=Math.floor((mx-10)/size), r=Math.floor((my-10)/size);if(r<0||c<0||r>=rows||c>=cols)return;const cell=grid[r][c];if(!cell)return;const visited={};flood(r,c,cell.color,visited);const keys=Object.keys(visited);if(keys.length>=3){score+=keys.length*10;document.getElementById('score').textContent=score;for(const k of keys){const [rr,cc]=k.split('_').map(Number);grid[rr][cc]=null;}collapse();fillEmpty();draw();}
+});
+function collapse(){for(let c=0;c<cols;c++){let pointer=rows-1;for(let r=rows-1;r>=0;r--){if(grid[r][c]){if(r!==pointer){grid[pointer][c]=grid[r][c];grid[pointer][c].y=pointer*size+10;grid[r][c]=null;}pointer--;}}}
+}
+function fillEmpty(){for(let r=0;r<rows;r++){for(let c=0;c<cols;c++){if(!grid[r][c])grid[r][c]={color:randColor(),x:c*size+10,y:r*size+10};}}
+}
+document.getElementById('reset').addEventListener('click',()=>{score=0;document.getElementById('score').textContent=0;for(let r=0;r<rows;r++)for(let c=0;c<cols;c++)grid[r][c]={color:randColor(),x:c*size+10,y:r*size+10};draw();});
+draw();
+</script>
+</body>
+</html>
