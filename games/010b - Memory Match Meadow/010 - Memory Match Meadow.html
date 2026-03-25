@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>010 - Memory Match Meadow</title>
+<style>
+:root{--bg:#e9f7ee;--card:#ffffff;--accent:#61b15a;--muted:#6b8b76}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#f7fff9,#e9f7ee);color:#123}
+.app{display:flex;flex-direction:column;align-items:center;padding:18px}
+.header{width:100%;max-width:1100px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.title{font-weight:800;font-size:20px;color:var(--accent);display:flex;align-items:center;gap:10px}
+.controls{display:flex;gap:8px;align-items:center}
+.btn{background:var(--card);border:1px solid rgba(0,0,0,0.06);padding:8px 12px;border-radius:10px;color:var(--muted);cursor:pointer}
+.container{width:100%;max-width:1100px;display:flex;gap:16px}
+.left{flex:1}
+.board-wrap{background:linear-gradient(180deg,#fff,#f6fff2);padding:12px;border-radius:12px;border:1px solid rgba(0,0,0,0.04)}
+#board{display:grid;gap:10px;touch-action:none}
+.card{background:var(--card);border-radius:10px;display:flex;align-items:center;justify-content:center;height:100px;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,0.06);position:relative;transform-style:preserve-3d;transition:transform 300ms ease}
+.card.back{transform:rotateY(0deg)}
+.card.flipped{transform:rotateY(180deg)}
+.face{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;border-radius:10px;backface-visibility:hidden}
+.front{background:linear-gradient(180deg,#ffffff,#f0fff2);font-size:32px}
+.backface{background:linear-gradient(180deg,#7bd389,#61b15a);color:#fff;transform:rotateY(180deg);font-size:28px}
+.right{width:320px;background:linear-gradient(180deg,#ffffff,#fbfff8);border-radius:12px;padding:12px;border:1px solid rgba(0,0,0,0.04)}
+.panel{background:transparent;padding:8px;border-radius:8px;margin-bottom:12px}
+.stat{font-size:14px;color:var(--muted);margin-top:6px}
+.small{font-size:13px;color:#5d7f6a}
+.footer{font-size:12px;color:var(--muted);text-align:center;margin-top:12px}
+.overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(0,0,0,0.4),rgba(0,0,0,0.5));}
+.cardbox{background:linear-gradient(180deg,#fff,#f6fff2);padding:20px;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.35);text-align:center;max-width:420px}
+@media(max-width:900px){.container{flex-direction:column}.right{width:100%}.card{height:82px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="title">010 - Memory Match Meadow <span style="font-size:18px">🌼</span></div>
+    <div class="controls">
+      <div class="stat">Level: <strong id="level">1</strong></div>
+      <button class="btn" id="newGame">New Game</button>
+      <button class="btn" id="shuffleBtn">Shuffle</button>
+    </div>
+  </div>
+  <div class="container">
+    <div class="left">
+      <div class="board-wrap">
+        <div id="board"></div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:12px;align-items:center">
+        <div class="small">Moves: <span id="moves">0</span></div>
+        <div class="small">Matches: <span id="matches">0</span></div>
+        <div class="small">Time: <span id="timer">00:00</span></div>
+      </div>
+    </div>
+    <div class="right">
+      <div class="panel">
+        <div style="font-weight:700">How to play</div>
+        <div class="small">Flip two cards to find a matching pair. Clear all pairs to complete the level. Levels increase grid size and add variety.</div>
+      </div>
+      <div class="panel">
+        <div style="font-weight:700">Options</div>
+        <div style="display:flex;gap:8px;margin-top:8px"><button class="btn" data-size="4">4x4</button><button class="btn" data-size="6">6x6</button><button class="btn" data-size="3">3x4</button></div>
+      </div>
+      <div class="panel">
+        <div style="font-weight:700">Tips</div>
+        <div class="small">Tap or click to flip. Use memory and patterns — watch the brief reveal when level starts. Play on mobile or desktop.</div>
+      </div>
+    </div>
+  </div>
+  <div class="footer">Prototype: included simple oscillator SFX (no external assets). Recommended: add refined artwork & SFX for portal submission.</div>
+</div>
+
+<!-- Win overlay -->
+<div id="winOverlay" class="overlay" style="display:none">
+  <div class="cardbox">
+    <div style="font-weight:800;font-size:22px">Well done!</div>
+    <div style="margin-top:10px" id="winText">You completed the level.</div>
+    <div style="margin-top:14px"><button class="btn" id="nextLevel">Next Level</button> <button class="btn" id="closeWin">Close</button></div>
+  </div>
+</div>
+
+<script>
+// 010 - Memory Match Meadow
+(function(){
+  const board = document.getElementById('board');
+  const movesEl = document.getElementById('moves');
+  const matchesEl = document.getElementById('matches');
+  const timerEl = document.getElementById('timer');
+  const levelEl = document.getElementById('level');
+  const winOverlay = document.getElementById('winOverlay');
+  const winText = document.getElementById('winText');
+
+  // small set of animal emojis to use as card faces ( kid-friendly and high-contrast )
+  const FACES = ['🐰','🦊','🦆','🐻','🦉','🐼','🐸','🐨','🐶','🐱','🦄','🦊','🐝','🐞','🦋','🐴'];
+
+  let state = {
+    cols:4, rows:4, // default 4x4
+    grid:[], // {id,face,matched,flipped,el}
+    first:null, second:null,
+    moves:0, matches:0,
+    timer:0, timerInterval:null,
+    level:1,
+    revealAtStart:1500,
+    audioCtx:null
+  };
+
+  // --- audio convenience (tiny beep using oscillator) ---
+  function audioInit(){ if(state.audioCtx) return; try{ state.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){ state.audioCtx=null; } }
+  function playBeep(freq=600,dur=0.08){ if(!state.audioCtx) return; const ctx=state.audioCtx; const o=ctx.createOscillator(); const g=ctx.createGain(); o.type='sine'; o.frequency.value=freq; o.connect(g); g.connect(ctx.destination); g.gain.value=0.0001; const now=ctx.currentTime; g.gain.exponentialRampToValueAtTime(0.12, now + 0.01); o.start(now); g.gain.exponentialRampToValueAtTime(0.00001, now + dur); o.stop(now + dur + 0.02); }
+
+  // build grid data
+  function setupGrid(cols,rows){ state.cols=cols; state.rows=rows; state.grid=[]; const total=cols*rows; if(total%2!==0) throw new Error('Grid must be even number of cells'); const pairCount = total/2; // pick faces
+    const pool = FACES.slice(0);
+    // ensure enough faces
+    while(pool.length < pairCount){ pool.push(...FACES); }
+    const selected = pool.sort(()=>Math.random()-0.5).slice(0,pairCount);
+    const faces = selected.concat(selected).sort(()=>Math.random()-0.5);
+    for(let i=0;i<total;i++){
+      state.grid.push({id:i, face:faces[i], matched:false, flipped:false, el:null});
+    }
+  }
+
+  function renderBoard(){
+    board.innerHTML='';
+    board.style.gridTemplateColumns = `repeat(${state.cols}, 1fr)`;
+    // compute size to make cards pleasant: use board width
+    const total = state.cols * state.rows;
+    for(const cell of state.grid){
+      const c = document.createElement('button'); c.className='card back'; c.dataset.id = cell.id; c.setAttribute('aria-pressed','false');
+      const front = document.createElement('div'); front.className='face front'; front.textContent='?';
+      const back = document.createElement('div'); back.className='face backface'; back.textContent=cell.face;
+      c.appendChild(front); c.appendChild(back);
+      c.addEventListener('click', onCardClick);
+      cell.el = c;
+      board.appendChild(c);
+    }
+  }
+
+  function onCardClick(e){ const id = Number(e.currentTarget.dataset.id); const cell = state.grid[id]; if(cell.matched || cell.flipped) return; flipCard(cell); }
+
+  function flipCard(cell){ if(state.second) return; // wait until pair processed
+    cell.flipped = true; cell.el.classList.add('flipped'); playBeep(700,0.06);
+    if(!state.first){ state.first=cell; } else { state.second=cell; state.moves++; movesEl.textContent = state.moves; checkPair(); }
+  }
+
+  function checkPair(){ if(!state.first || !state.second) return; const a = state.first, b = state.second; if(a.face === b.face){ // match
+      a.matched = true; b.matched = true; state.matches++; matchesEl.textContent = state.matches; playBeep(1000,0.12);
+      // small visual feedback
+      a.el.style.boxShadow = '0 10px 30px rgba(0,180,80,0.12)'; b.el.style.boxShadow='0 10px 30px rgba(0,180,80,0.12)';
+      // reset selection after short delay
+      setTimeout(()=>{ state.first=null; state.second=null; checkWin(); },350);
+    } else {
+      // flip back after a moment
+      setTimeout(()=>{
+        a.flipped=false; b.flipped=false; a.el.classList.remove('flipped'); b.el.classList.remove('flipped'); state.first=null; state.second=null; playBeep(320,0.06);
+      }, 700);
+    }
+  }
+
+  function checkWin(){ const all = state.grid.every(c=>c.matched); if(all){ // stop timer
+      clearInterval(state.timerInterval); playBeep(1500,0.2); showWin(); }
+  }
+
+  function showWin(){ winText.textContent = `Level ${state.level} complete — Moves: ${state.moves}, Time: ${formatTime(state.timer)}`; winOverlay.style.display='flex'; }
+
+  function hideWin(){ winOverlay.style.display='none'; }
+
+  function startTimer(){ state.timer=0; clearInterval(state.timerInterval); timerEl.textContent = formatTime(state.timer); state.timerInterval = setInterval(()=>{ state.timer++; timerEl.textContent = formatTime(state.timer); },1000); }
+  function formatTime(s){ const mm = String(Math.floor(s/60)).padStart(2,'0'); const ss = String(s%60).padStart(2,'0'); return `${mm}:${ss}`; }
+
+  // Start game: set up grid based on chosen size
+  function startGame(cols,rows){ audioInit(); state.moves=0; state.matches=0; state.first=null; state.second=null; state.level=1; levelEl.textContent = state.level; movesEl.textContent = state.moves; matchesEl.textContent = state.matches; setupGrid(cols,rows); renderBoard(); // reveal briefly for player memory
+    // reveal all then hide
+    state.grid.forEach(c=>{ c.flipped=true; c.el.classList.add('flipped'); });
+    setTimeout(()=>{
+      state.grid.forEach(c=>{ if(!c.matched){ c.flipped=false; c.el.classList.remove('flipped'); } });
+      startTimer();
+    }, state.revealAtStart);
+  }
+
+  // shuffle current board
+  function shuffleBoard(){ const faces = state.grid.map(g=>g.face).sort(()=>Math.random()-0.5); for(let i=0;i<state.grid.length;i++){ state.grid[i].face = faces[i]; state.grid[i].matched=false; state.grid[i].flipped=false; if(state.grid[i].el){ state.grid[i].el.classList.remove('flipped'); state.grid[i].el.firstChild.textContent='?'; state.grid[i].el.lastChild.textContent = state.grid[i].face; state.grid[i].el.style.boxShadow=''; } } state.moves=0; state.matches=0; movesEl.textContent=0; matchesEl.textContent=0; startTimer(); }
+
+  // next level: increase complexity slightly (add a column or row until cap)
+  function nextLevel(){ state.level++; // expand grid gradually
+    let cols = state.cols, rows = state.rows;
+    if(cols<=rows && cols<6) cols++; else if(rows<6) rows++;
+    levelEl.textContent = state.level;
+    startGame(cols,rows);
+    hideWin();
+  }
+
+  // hook up UI
+  document.getElementById('newGame').addEventListener('click', ()=>{ startGame(state.cols,state.rows); });
+  document.getElementById('shuffleBtn').addEventListener('click', ()=>{ shuffleBoard(); });
+  document.querySelectorAll('.right .btn[data-size]').forEach(b=>b.addEventListener('click', e=>{
+    const val = e.currentTarget.dataset.size.split('x'); if(val.length===1){ // N -> NxN
+      const n = Number(e.currentTarget.dataset.size); startGame(n,n); }
+    else { startGame(Number(val[0]),Number(val[1])); }
+  }));
+  document.getElementById('nextLevel').addEventListener('click', nextLevel);
+  document.getElementById('closeWin').addEventListener('click', hideWin);
+
+  // accessibility: keyboard to flip (arrows + enter) - simple focus behavior
+  board.addEventListener('keydown', e=>{
+    const active = document.activeElement; if(!active || !active.classList.contains('card')) return;
+    const id = Number(active.dataset.id); const r = Math.floor(id/state.cols), c = id % state.cols;
+    if(e.key==='ArrowRight'){ const nc = Math.min(state.cols-1,c+1); const nid = r*state.cols + nc; board.children[nid].focus(); }
+    if(e.key==='ArrowLeft'){ const nc = Math.max(0,c-1); const nid=r*state.cols+nc; board.children[nid].focus(); }
+    if(e.key==='ArrowDown'){ const nr = Math.min(state.rows-1,r+1); const nid = nr*state.cols + c; board.children[nid].focus(); }
+    if(e.key==='ArrowUp'){ const nr = Math.max(0,r-1); const nid = nr*state.cols + c; board.children[nid].focus(); }
+    if(e.key==='Enter' || e.key===' ') active.click();
+  });
+
+  // start default
+  startGame(4,4);
+
+})();
+</script>
+</body>
+</html>
