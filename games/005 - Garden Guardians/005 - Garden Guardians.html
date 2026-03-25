@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>005 - Garden Guardians</title>
+<style>
+  :root{--bg:#e6fff2;--card:#fff}
+  body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:0;background:linear-gradient(180deg,var(--bg),#d8f7e8);display:flex;align-items:center;justify-content:center;height:100vh}
+  .wrap{width:960px;max-width:96%;background:var(--card);border-radius:12px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,0.12)}
+  h1{margin:0 0 8px;font-size:20px}
+  .top{display:flex;justify-content:space-between;align-items:center}
+  #board{display:grid;grid-template-columns:repeat(9,64px);grid-template-rows:repeat(6,64px);gap:6px;background:#dff6ea;padding:8px;border-radius:8px;border:2px solid rgba(0,0,0,0.04)}
+  .cell{width:64px;height:64px;background:linear-gradient(#f7fff8,#e7ffe9);border-radius:6px;display:flex;align-items:center;justify-content:center;position:relative}
+  .cell.block{background:#8bc34a}
+  .toolbar{display:flex;gap:8px}
+  .plant{padding:8px;border-radius:8px;border:1px solid rgba(0,0,0,0.06);background:#fff;cursor:pointer}
+  .meta{font-size:13px;color:#444}
+  .hud{display:flex;gap:12px;align-items:center}
+  button{padding:6px 10px;border-radius:8px;border:none;background:#2e9f57;color:#fff}
+  .sprite{position:absolute;pointer-events:none}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <h1>005 - Garden Guardians</h1>
+      <div class="hud">
+        <div>Sun: <span id="sun">50</span></div>
+        <div>Wave: <span id="wave">0</span></div>
+        <button id="start">Start Wave</button>
+        <div class="meta">Place plants to defend the garden from pests.</div>
+      </div>
+    </div>
+    <p style="color:#446">Click a plant in the toolbar, then click a grid cell to place it. Plants shoot peas that damage pests. This is a small playable prototype.</p>
+    <div style="display:flex;gap:14px;align-items:flex-start">
+      <div id="board"></div>
+      <div style="width:220px">
+        <div style="margin-bottom:8px;font-weight:700">Plants</div>
+        <div class="toolbar">
+          <div class="plant" data-type="sunflower">Sunflower<br><small>+$5s</small></div>
+          <div class="plant" data-type="peashooter">Peashooter<br><small>Shoots</small></div>
+          <div class="plant" data-type="wallnut">Wall-nut<br><small>Block</small></div>
+        </div>
+        <div style="margin-top:12px"><strong>Controls</strong><div style="font-size:13px;color:#444;margin-top:6px">Start wave, place plants. Costs: Sunflower 50, Peashooter 75, Wall-nut 60.</div></div>
+        <div style="margin-top:12px"><strong>Notes</strong><div style="font-size:13px;color:#444;margin-top:6px">Prototype: simplified mechanics for quick play.</div></div>
+      </div>
+    </div>
+  </div>
+<script>
+const ROWS=6,COLS=9;const board=document.getElementById('board');let cells=[];let selectedPlant=null;
+const SUN_EL=document.getElementById('sun');const WAVE_EL=document.getElementById('wave');let sun=50;let wave=0;let pests=[];let plants=[];let bullets=[];let gameInterval=null;
+const PLANT_COST={sunflower:50,peashooter:75,wallnut:60};
+// build grid
+for(let r=0;r<ROWS;r++){for(let c=0;c<COLS;c++){const div=document.createElement('div');div.className='cell';div.dataset.r=r;div.dataset.c=c;board.appendChild(div);cells.push(div);div.addEventListener('click',()=>placePlant(div));}}
+// toolbar selection
+document.querySelectorAll('.plant').forEach(p=>{p.addEventListener('click',()=>{document.querySelectorAll('.plant').forEach(x=>x.style.outline='');p.style.outline='2px solid #2e9f57';selectedPlant=p.dataset.type;});});
+function placePlant(div){if(!selectedPlant) return;const r=+div.dataset.r,c=+div.dataset.c;if(div.dataset.occupied) return;const cost=PLANT_COST[selectedPlant];if(sun<cost){alert('Not enough sun');return;}sun-=cost;updateHud();div.dataset.occupied=selectedPlant;plants.push({r,c,type:selectedPlant,hp:selectedPlant==='wallnut'?200:100,shootCooldown:0});renderCell(div,selectedPlant);}
+function renderCell(div,type){div.innerHTML='';const el=document.createElement('div');el.className='sprite';el.style.fontSize='12px';el.style.color='#222';if(type==='sunflower') el.textContent='🌻';if(type==='peashooter')el.textContent='🌱';if(type==='wallnut')el.textContent='🪨';div.appendChild(el);}
+function spawnPest(){// spawn at left column row random
+const r=Math.floor(Math.random()*ROWS);const pest={x:-0.5,y:r,px:(-0.5)*70,spd:0.8+Math.random()*0.6,hp:60};pests.push(pest)}
+function gameTick(){// move pests
+for(const p of pests){p.x+=p.spd/60; p.px=(p.x)*70;}
+// plants shoot
+for(const pl of plants){if(pl.type==='peashooter'){pl.shootCooldown--; if(pl.shootCooldown<=0){pl.shootCooldown=60; // one shot per sec
+const bx={x:pl.c+0.5,y:pl.r+0.5,px:(pl.c+0.5)*70,py:(pl.r+0.5)*70,spd:5,damage:20};bullets.push(bx);}
+}else if(pl.type==='sunflower'){ // generate sun slowly
+if(Math.random()<0.01) sun+=5;}
+}
+// bullets move and hit
+for(let i=bullets.length-1;i>=0;i--){const b=bullets[i];b.x+=b.spd/60; b.px=b.x*70; // check collision with pests
+for(let j=pests.length-1;j>=0;j--){const p=pests[j]; if(Math.abs(p.x - b.x) < 0.5 && p.y===Math.floor(b.y||b.y===0?b.y: b.y)){ } if(Math.abs(p.x - b.x) < 0.6 && Math.abs(p.y+0.5 - b.y) < 0.6){p.hp-=b.damage; bullets.splice(i,1); if(p.hp<=0) pests.splice(j,1); break; }} if(bullets[i] && b.x>COLS+1) bullets.splice(i,1);} // simplistic y check is avoided
+// remove offscreen pests and check loss
+for(let i=pests.length-1;i>=0;i--){if(pests[i].x>COLS-0.2){alert('A pest reached the garden — wave failed');stopGame(); return;}}
+// update HUD and render
+updateHud();renderAll();}
+function renderAll(){ // clear sprites then draw
+cells.forEach(div=>{const occ=div.dataset.occupied; if(!occ) div.innerHTML='';}); // draw pests
+for(const p of pests){const colIndex=Math.floor(p.x); const cellIndex=Math.max(0,Math.min((p.y)*COLS + Math.floor(p.x), cells.length-1)); const div=cells[(p.y)*COLS + Math.max(0,Math.min(Math.floor(p.x),COLS-1))]; if(div){div.innerHTML='<div class="sprite">🐛</div>';}}
+// draw bullets
+for(const b of bullets){const cx=Math.floor(b.x), cy=Math.floor(b.y||0); if(cx>=0 && cx<COLS){const div=cells[(cy)*COLS + cx]; if(div){div.innerHTML='<div class="sprite">•</div>';}}}
+}
+function updateHud(){SUN_EL.textContent=sun;WAVE_EL.textContent=wave}
+function startWave(){wave++; WAVE_EL.textContent=wave; // spawn pests periodically 10 pests
+let spawned=0; const si=setInterval(()=>{spawnPest(); spawned++; if(spawned>=10){clearInterval(si);} },800);}
+function stopGame(){clearInterval(gameInterval);gameInterval=null}
+// start main loop
+gameInterval=setInterval(gameTick,1000/30);
+// UI
+document.getElementById('start').addEventListener('click',()=>startWave());
+// simple keyboard shortcuts
+window.addEventListener('keydown',e=>{if(e.key==='1') selectToolbar('sunflower'); if(e.key==='2') selectToolbar('peashooter'); if(e.key==='3') selectToolbar('wallnut');});
+function selectToolbar(t){document.querySelectorAll('.plant').forEach(x=>x.style.outline=''); const el=document.querySelector('.plant[data-type="'+t+'"]'); if(el){el.style.outline='2px solid #2e9f57'; selectedPlant=t;}}
+</script>
+</body>
+</html>
