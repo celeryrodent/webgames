@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>005 - Paint Roll Puzzle</title>
+<style>
+:root{--bg:#f6f6f8;--panel:#ffffff;--accent:#3aa1ff;--paint1:#ff6b6b;--paint2:#ffd166;--paint3:#6bf2b8;--paint4:#6bb6ff}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,#eef6ff,#f6f6f8)}
+.app{display:flex;flex-direction:column;align-items:center;padding:18px}
+.header{width:100%;max-width:1100px;display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.title{font-weight:700;font-size:18px;color:#0a2540}
+.controls{display:flex;gap:8px}
+.btn{background:var(--panel);border:1px solid rgba(10,30,60,0.06);padding:8px 12px;border-radius:10px;color:#0a2540;cursor:pointer}
+.container{width:100%;max-width:1100px;display:flex;gap:16px}
+.left{flex:1}
+.board-wrap{background:linear-gradient(180deg,#ffffff,#f3f9ff);padding:12px;border-radius:12px;border:1px solid rgba(10,30,60,0.04)}
+#canvas{width:100%;height:calc(100vh - 220px);display:block;border-radius:8px}
+.right{width:320px;background:linear-gradient(180deg,#ffffff,#f7fbff);border-radius:12px;padding:12px;border:1px solid rgba(10,30,60,0.04)}
+.panel{background:transparent;padding:8px;border-radius:8px;margin-bottom:12px}
+.stat{font-size:13px;color:#2d4a6a;margin-top:6px}
+.hint{font-size:13px;color:#44627f}
+.footer{font-size:12px;color:#6b8294;text-align:center;margin-top:12px}
+.level-list{display:flex;flex-wrap:wrap;gap:8px}
+.level-btn{padding:6px 8px;border-radius:8px;border:1px solid rgba(10,30,60,0.06);background:#fff;cursor:pointer}
+@media(max-width:900px){.container{flex-direction:column}.right{width:100%}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="title">005 - Paint Roll Puzzle</div>
+    <div class="controls">
+      <button class="btn" id="restart">Restart</button>
+      <button class="btn" id="undo">Undo</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="left">
+      <div class="board-wrap">
+        <canvas id="canvas"></canvas>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <div class="stat">Level: <span id="levelNum">1</span></div>
+        <div class="stat">Moves: <span id="moves">0</span></div>
+        <div class="stat">Status: <span id="status">Ready</span></div>
+      </div>
+    </div>
+    <div class="right">
+      <div class="panel">
+        <div style="font-weight:700">How to play</div>
+        <div class="hint">Roll the paint ball using arrow keys or swipe. The ball rolls until it hits a wall. Paint every tile exactly once and reach the exit. Don't retrace — you must paint each tile only once.</div>
+      </div>
+      <div class="panel">
+        <div style="font-weight:700">Levels</div>
+        <div class="level-list" id="levels"></div>
+      </div>
+      <div class="panel">
+        <div style="font-weight:700">Controls</div>
+        <div class="hint">Arrow keys/WASD to move. Swipe on touch. Use Undo to revert last move.</div>
+      </div>
+      <div class="panel">
+        <div style="font-weight:700">Notes</div>
+        <div class="hint">This prototype includes multiple handcrafted levels, undo, and responsive canvas. Add audio and polished art for portal submission.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">Prototype ready — recommended: add music/SFX, polished sprites and a level progression UI for portal submission.</div>
+</div>
+
+<script>
+// Paint Roll Puzzle - prototype
+// Grid-based levels; ball rolls until it hits a wall; aim to paint all tiles exactly once and reach exit.
+(function(){
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const levelNumEl = document.getElementById('levelNum');
+  const movesEl = document.getElementById('moves');
+  const statusEl = document.getElementById('status');
+  const undoBtn = document.getElementById('undo');
+  const restartBtn = document.getElementById('restart');
+  const levelsEl = document.getElementById('levels');
+
+  // Tile types: 0=empty floor, 1=wall, 2=exit
+  // We'll define handcrafted levels as arrays
+  const LEVELS = [
+    // Level 1 - small
+    {w:7,h:7,map:[
+      1,1,1,1,1,1,1,
+      1,0,0,0,0,2,1,
+      1,0,1,1,0,0,1,
+      1,0,1,0,0,0,1,
+      1,0,0,0,1,0,1,
+      1,3,0,0,0,0,1,
+      1,1,1,1,1,1,1], start:{x:1,y:5}}
+    ,
+    // Level 2 - medium
+    {w:9,h:7,map:[
+      1,1,1,1,1,1,1,1,1,
+      1,0,0,0,0,0,0,2,1,
+      1,0,1,1,1,0,1,0,1,
+      1,0,0,0,1,0,0,0,1,
+      1,0,1,0,0,0,1,0,1,
+      1,0,0,0,1,0,0,0,1,
+      1,1,1,1,1,1,1,1,1], start:{x:1,y:5}}
+    ,
+    // Level 3 - trickier
+    {w:11,h:9,map:[
+      1,1,1,1,1,1,1,1,1,1,1,
+      1,0,0,0,0,0,0,0,0,2,1,
+      1,0,1,1,1,0,1,1,0,0,1,
+      1,0,1,0,1,0,1,0,0,0,1,
+      1,0,1,0,0,0,1,0,1,0,1,
+      1,0,0,0,1,0,0,0,1,0,1,
+      1,0,1,0,1,1,1,0,0,0,1,
+      1,3,0,0,0,0,0,0,0,0,1,
+      1,1,1,1,1,1,1,1,1,1,1], start:{x:1,y:7}}
+  ];
+
+  // constants
+  const TILE = 48; // base tile pixel size, scaled with device
+  let scale = 1;
+
+  let state = {
+    level: 0,
+    map: [],
+    w:0,h:0,
+    ball:{x:0,y:0}, // tile coords
+    painted:[], // boolean painted array
+    history:[] // for undo: store moves (ball positions and painted changes)
+  };
+
+  function resize(){
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const maxW = rect.width - 24;
+    const maxH = window.innerHeight - 260;
+    canvas.width = Math.min(maxW, 900);
+    canvas.height = Math.min(maxH, 720);
+    // set scale to fit the grid
+    if(state.w && state.h){
+      scale = Math.floor(Math.min((canvas.width-20)/ (state.w * TILE), (canvas.height-20)/ (state.h * TILE)) * 1);
+      if(scale<0.6) scale = (canvas.width-20)/ (state.w * TILE);
+    }
+    render();
+  }
+
+  window.addEventListener('resize',resize);
+
+  function loadLevel(index){
+    const src = LEVELS[index];
+    state.level = index;
+    state.w = src.w; state.h = src.h;
+    state.map = src.map.slice();
+    state.ball.x = src.start.x; state.ball.y = src.start.y;
+    state.painted = new Array(state.w*state.h).fill(false);
+    // mark walls as painted to ignore
+    for(let i=0;i<state.map.length;i++){ if(state.map[i]===1) state.painted[i]=true; }
+    // paint starting tile
+    paintAt(state.ball.x, state.ball.y);
+    state.history = [];
+    updateUI();
+    resize();
+    status('Ready');
+  }
+
+  function index(x,y){ return y*state.w + x; }
+  function inBounds(x,y){ return x>=0 && x<state.w && y>=0 && y<state.h; }
+
+  function paintAt(x,y){ const idx=index(x,y); if(!state.painted[idx]) state.painted[idx]=true; }
+
+  function move(dir){
+    // dir: 'L','R','U','D'
+    // simulate rolling until hit wall (tile value 1) or boundary
+    const dx = dir==='L'? -1 : dir==='R'?1:0;
+    const dy = dir==='U'? -1 : dir==='D'?1:0;
+    let cx = state.ball.x, cy=state.ball.y;
+    let moved=false;
+    const paintedDuring = [];
+    // store initial state for undo
+    const before = {x:cx,y:cy, painted:[]};
+    while(true){
+      const nx = cx + dx, ny = cy + dy;
+      if(!inBounds(nx,ny)) break;
+      const t = state.map[index(nx,ny)];
+      if(t===1) break; // wall
+      cx = nx; cy = ny; moved=true;
+      const id=index(cx,cy);
+      if(!state.painted[id]){ state.painted[id]=true; paintedDuring.push(id); }
+      // if tile is exit (2) we allow stepping on it
+    }
+    if(!moved) { status('Blocked'); return; }
+    // record move
+    before.painted = paintedDuring.slice();
+    state.history.push(before);
+    state.ball.x = cx; state.ball.y = cy;
+    updateUI(); render();
+    checkWin();
+  }
+
+  function checkWin(){
+    // win if all non-wall tiles painted and ball is on exit (tile 2)
+    for(let y=0;y<state.h;y++){
+      for(let x=0;x<state.w;x++){
+        const t = state.map[index(x,y)];
+        if(t!==1){ if(!state.painted[index(x,y)]) return; }
+      }
+    }
+    // all painted; now check if ball at exit
+    if(state.map[index(state.ball.x,state.ball.y)]===2){ status('Level Complete!'); }
+    else status('All painted — move ball to exit');
+  }
+
+  function undo(){
+    if(state.history.length===0) { status('Nothing to undo'); return; }
+    const last = state.history.pop();
+    // unpaint tiles painted during last move
+    for(const id of last.painted){ state.painted[id]=false; }
+    // move ball back
+    state.ball.x = last.x; state.ball.y = last.y;
+    updateUI(); render(); status('Undo');
+  }
+
+  function restart(){ loadLevel(state.level); }
+
+  function status(txt){ statusEl.textContent = txt; }
+
+  function updateUI(){ levelNumEl.textContent = (state.level+1); movesEl.textContent = state.history.length; }
+
+  function render(){
+    const W = canvas.width; const H = canvas.height;
+    ctx.clearRect(0,0,W,H);
+    if(!state.w) return;
+    const tileSize = TILE * scale * 0.02 * 10; // tuned
+    const totalW = state.w * tileSize; const totalH = state.h * tileSize;
+    const ox = (W - totalW)/2; const oy = (H - totalH)/2;
+    // background grid
+    ctx.fillStyle='#e9f2ff'; ctx.fillRect(ox-6,oy-6,totalW+12,totalH+12);
+    for(let y=0;y<state.h;y++){
+      for(let x=0;x<state.w;x++){
+        const t = state.map[index(x,y)];
+        const px = ox + x*tileSize; const py = oy + y*tileSize;
+        // tile background
+        if(t===1){ ctx.fillStyle='#223248'; ctx.fillRect(px,py,tileSize-2,tileSize-2); }
+        else {
+          // painted or not
+          const painted = state.painted[index(x,y)];
+          if(painted) ctx.fillStyle='#fff8f2'; else ctx.fillStyle='#f0f7ff';
+          ctx.fillRect(px,py,tileSize-2,tileSize-2);
+          // border
+          ctx.strokeStyle='rgba(10,30,60,0.06)'; ctx.lineWidth=1; ctx.strokeRect(px+0.5,py+0.5,tileSize-3,tileSize-3);
+        }
+        // exit
+        if(t===2){ ctx.fillStyle='#ffe69b'; ctx.fillRect(px+6,py+6,tileSize-14,tileSize-14); ctx.fillStyle='#6b3d00'; ctx.font=(tileSize*0.35)+'px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('EXIT', px+tileSize/2, py+tileSize/2); }
+      }
+    }
+    // draw ball
+    const bx = ox + state.ball.x*tileSize + tileSize/2; const by = oy + state.ball.y*tileSize + tileSize/2;
+    // ball gradient
+    const grad = ctx.createRadialGradient(bx-6,by-8,4,bx,by, tileSize*0.45);
+    grad.addColorStop(0,'#ffffff'); grad.addColorStop(0.4,'#ffeee6'); grad.addColorStop(1,'#ffbba8');
+    ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(bx,by,tileSize*0.28,0,Math.PI*2); ctx.fill();
+    // ball outline
+    ctx.strokeStyle='rgba(0,0,0,0.08)'; ctx.lineWidth=2; ctx.stroke();
+  }
+
+  // input handling
+  window.addEventListener('keydown',e=>{
+    if(e.key==='ArrowLeft' || e.key==='a') move('L');
+    if(e.key==='ArrowRight' || e.key==='d') move('R');
+    if(e.key==='ArrowUp' || e.key==='w') move('U');
+    if(e.key==='ArrowDown' || e.key==='s') move('D');
+  });
+
+  // touch swipe
+  let touchStart = null;
+  canvas.addEventListener('touchstart',e=>{ const t=e.touches[0]; touchStart={x:t.clientX,y:t.clientY}; },{passive:true});
+  canvas.addEventListener('touchend',e=>{ if(!touchStart) return; const t = e.changedTouches[0]; const dx = t.clientX - touchStart.x; const dy = t.clientY - touchStart.y; const absx=Math.abs(dx), absy=Math.abs(dy); if(Math.max(absx,absy)<20) { touchStart=null; return; } if(absx>absy){ if(dx>0) move('R'); else move('L'); } else { if(dy>0) move('D'); else move('U'); } touchStart=null; },{passive:true});
+
+  // UI bindings
+  undoBtn.addEventListener('click',undo);
+  restartBtn.addEventListener('click',restart);
+
+  // build level selector
+  LEVELS.forEach((lv,i)=>{
+    const btn = document.createElement('button'); btn.className='level-btn'; btn.textContent = 'Level ' + (i+1); btn.addEventListener('click',()=>{ loadLevel(i); }); levelsEl.appendChild(btn);
+  });
+
+  // initial load
+  loadLevel(0);
+
+  // expose to window for dev
+  window.__paintstate = state;
+})();
+</script>
+</body>
+</html>
