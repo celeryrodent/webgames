@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>007 - Word Weave</title>
+<style>
+  body{font-family:system-ui,Roboto,Arial;margin:0;background:#f6f2ea;display:flex;align-items:center;justify-content:center;height:100vh}
+  .wrap{width:760px;background:#fff;padding:18px;border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,0.08)}
+  #board{width:520px;height:520px;display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:10px auto}
+  .tile{background:#f1e7d6;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;user-select:none}
+  #controls{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+  #candidate{font-size:20px}
+  button{padding:8px 12px;border-radius:8px;border:0;background:#2b8a3e;color:#fff}
+  #found{margin-top:10px;min-height:40px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h2>007 - Word Weave</h2>
+  <p>Drag or click adjacent letters to form words (Boggle-like). Submit to score.</p>
+  <div id="board"></div>
+  <div id="controls">
+    <div id="candidate"></div>
+    <div><button id="submit">Submit</button> <button id="clear">Clear</button></div>
+  </div>
+  <div id="found"></div>
+</div>
+<script>
+const boardEl=document.getElementById('board');const candidateEl=document.getElementById('candidate');const foundEl=document.getElementById('found');const submitBtn=document.getElementById('submit');const clearBtn=document.getElementById('clear');
+const letters=[..."TRAEONLSHIPGDUMC"]; // 5x4
+let grid=[];let candidate=[];let found=[];const rows=4,cols=5;
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function build(){boardEl.innerHTML='';grid=[];shuffle(letters);let idx=0;for(let r=0;r<rows;r++){for(let c=0;c<cols;c++){const ch=letters[idx++];const d=document.createElement('div');d.className='tile';d.textContent=ch;d.dataset.r=r;d.dataset.c=c;d.addEventListener('mousedown',start);d.addEventListener('touchstart',start,{passive:true});boardEl.appendChild(d);grid.push(d)}}}
+function start(e){const el=e.currentTarget; if(candidate.includes(el)) return; if(candidate.length===0 || adjacent(candidate[candidate.length-1],el)){candidate.push(el);el.style.background='#ffd66b'; updateCandidate()} }
+function adjacent(a,b){const ar=+a.dataset.r,ac=+a.dataset.c,br=+b.dataset.r,bc=+b.dataset.c;return Math.abs(ar-br)<=1 && Math.abs(ac-bc)<=1}
+function updateCandidate(){candidateEl.textContent=candidate.map(x=>x.textContent).join('')} 
+submitBtn.addEventListener('click',()=>{const word=candidate.map(x=>x.textContent).join(''); if(word.length<3){alert('Words must be 3+ letters');clearCandidate();return} if(found.includes(word)){alert('Already found');clearCandidate();return} found.push(word);renderFound();clearCandidate();})
+clearBtn.addEventListener('click',clearCandidate)
+function clearCandidate(){candidate.forEach(x=>x.style.background='');candidate=[];updateCandidate()}
+function renderFound(){foundEl.innerHTML='<strong>Found ('+found.length+'):</strong> '+found.join(', ')}
+build();
+</script>
+</body>
+</html>
