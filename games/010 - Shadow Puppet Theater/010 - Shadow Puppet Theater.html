@@ -1,0 +1,395 @@
+                5;
+            if (game.keys['ArrowLeft'] || game.keys['a'] || game.keys['A']) {
+                game.light.x -= lightSpeed;
+            }
+            if (game.keys['ArrowRight'] || game.keys['d'] || game.keys['D']) {
+                game.light.x += lightSpeed;
+            }
+            if (game.keys['ArrowUp'] || game.keys['w'] || game.keys['W']) {
+                game.light.y -= lightSpeed;
+            }
+            if (game.keys['ArrowDown'] || game.keys['s'] || game.keys['S']) {
+                game.light.y += lightSpeed;
+            }
+            
+            // Keep light in bounds
+            game.light.x = Math.max(game.light.radius, 
+                Math.min(game.canvas.width - game.light.radius, game.light.x));
+            game.light.y = Math.max(game.light.radius, 
+                Math.min(game.canvas.height - game.light.radius, game.light.y));
+            
+            // Move puppet with keyboard
+            const puppetSpeed = CONFIG.puppetSpeed;
+            if (game.keys['ArrowLeft'] || game.keys['a'] || game.keys['A']) {
+                game.puppet.vx = -puppetSpeed;
+            } else if (game.keys['ArrowRight'] || game.keys['d'] || game.keys['D']) {
+                game.puppet.vx = puppetSpeed;
+            }
+            
+            // Jump
+            if ((game.keys[' '] || game.keys['ArrowUp'] || game.keys['w'] || game.keys['W']) && game.puppet.onGround) {
+                game.puppet.vy = -CONFIG.jumpForce;
+                game.puppet.onGround = false;
+                // Clear jump key to prevent continuous jumping
+                game.keys[' '] = false;
+                game.keys['ArrowUp'] = false;
+                game.keys['w'] = false;
+                game.keys['W'] = false;
+            }
+            
+            // Compute shadows for next frame
+            computeShadows();
+        }
+
+        function draw() {
+            const ctx = game.ctx;
+            const canvas = game.canvas;
+            
+            // Clear canvas
+            ctx.fillStyle = '#1a0f0f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw ground
+            ctx.fillStyle = '#5d4037';
+            ctx.fillRect(0, canvas.height - 20, canvas.width, 20);
+            
+            // Draw shadows
+            ctx.fillStyle = `rgba(0, 0, 0, ${CONFIG.shadowDarkness})`;
+            game.shadows.forEach(shadow => {
+                if (shadow.length >= 3) {
+                    ctx.beginPath();
+                    ctx.moveTo(shadow[0].x, shadow[0].y);
+                    for (let i = 1; i < shadow.length; i++) {
+                        ctx.lineTo(shadow[i].x, shadow[i].y);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            });
+            
+            // Draw objects
+            ctx.fillStyle = '#8d6e63';
+            game.objects.forEach(obj => {
+                ctx.fillRect(
+                    obj.x - obj.width/2,
+                    obj.y - obj.height/2,
+                    obj.width,
+                    obj.height
+                );
+                // Add subtle texture
+                ctx.strokeStyle = '#6d4c41';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(
+                    obj.x - obj.width/2,
+                    obj.y - obj.height/2,
+                    obj.width,
+                    obj.height
+                );
+            });
+            
+            // Draw pages (collectibles)
+            game.pages.forEach(page => {
+                if (!page.collected) {
+                    // Golden page with glow
+                    ctx.fillStyle = '#ffeb3b';
+                    ctx.beginPath();
+                    ctx.arc(page.x, page.y, 12, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.strokeStyle = '#ff9900';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                    
+                    // Page corner
+                    ctx.fillStyle = '#ffcc00';
+                    ctx.beginPath();
+                    ctx.moveTo(page.x + 8, page.y - 8);
+                    ctx.lineTo(page.x + 12, page.y - 8);
+                    ctx.lineTo(page.x + 8, page.y - 12);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            });
+            
+            // Draw door
+            ctx.fillStyle = '#4caf50';
+            ctx.fillRect(
+                game.door.x - game.door.width/2,
+                game.door.y - game.door.height/2,
+                game.door.width,
+                game.door.height
+            );
+            ctx.fillStyle = '#2e7d32';
+            ctx.fillRect(
+                game.door.x - game.door.width/2 + 5,
+                game.door.y - game.door.height/2 + 5,
+                game.door.width - 10,
+                game.door.height - 10
+            );
+            
+            // Draw door handle
+            ctx.fillStyle = '#ffcc00';
+            ctx.beginPath();
+            ctx.arc(game.door.x + game.door.width/2 - 15, game.door.y, 5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw puppet (silhouette)
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(
+                game.puppet.x - game.puppet.width/2,
+                game.puppet.y - game.puppet.height/2,
+                game.puppet.width,
+                game.puppet.height
+            );
+            
+            // Add puppet details
+            ctx.fillStyle = '#333333';
+            ctx.beginPath();
+            ctx.arc(game.puppet.x, game.puppet.y - game.puppet.height/4, 8, 0, Math.PI * 2); // Head
+            ctx.fill();
+            
+            // Draw arms and legs
+            ctx.strokeStyle = '#333333';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            // Left arm
+            ctx.moveTo(game.puppet.x - game.puppet.width/2, game.puppet.y);
+            ctx.lineTo(game.puppet.x - game.puppet.width/2 - 10, game.puppet.y - 10);
+            // Right arm
+            ctx.moveTo(game.puppet.x + game.puppet.width/2, game.puppet.y);
+            ctx.lineTo(game.puppet.x + game.puppet.width/2 + 10, game.puppet.y - 10);
+            // Left leg
+            ctx.moveTo(game.puppet.x - game.puppet.width/4, game.puppet.y + game.puppet.height/2);
+            ctx.lineTo(game.puppet.x - game.puppet.width/4 - 5, game.puppet.y + game.puppet.height/2 + 15);
+            // Right leg
+            ctx.moveTo(game.puppet.x + game.puppet.width/4, game.puppet.y + game.puppet.height/2);
+            ctx.lineTo(game.puppet.x + game.puppet.width/4 + 5, game.puppet.y + game.puppet.height/2 + 15);
+            ctx.stroke();
+            
+            // Draw light source (lantern)
+            // Glow effect
+            const gradient = ctx.createRadialGradient(
+                game.light.x, game.light.y, 0,
+                game.light.x, game.light.y, CONFIG.lightRadius
+            );
+            gradient.addColorStop(0, 'rgba(255, 255, 200, 0.8)');
+            gradient.addColorStop(0.5, 'rgba(255, 255, 150, 0.3)');
+            gradient.addColorStop(1, 'rgba(255, 255, 100, 0)');
+            
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(game.light.x, game.light.y, CONFIG.lightRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            
+            // Lantern body
+            ctx.fillStyle = '#ffcc00';
+            ctx.beginPath();
+            ctx.arc(game.light.x, game.light.y, game.light.radius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.strokeStyle = '#ff9900';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            
+            // Lantern handle
+            ctx.strokeStyle = '#cc8800';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(game.light.x, game.light.y - game.light.radius);
+            ctx.lineTo(game.light.x, game.light.y - game.light.radius - 15);
+            ctx.stroke();
+            
+            // Draw collected pages counter
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.font = '16px Arial';
+            ctx.fillText(`Pages: ${game.collectedPages}/${game.totalPages}`, 10, 30);
+            
+            // Draw level name
+            ctx.fillStyle = 'rgba(255, 204, 153, 0.8)';
+            ctx.font = 'bold 18px Arial';
+            ctx.fillText(CONFIG.levels[game.currentLevel].name, canvas.width - 150, 30);
+        }
+
+        function completeLevel() {
+            game.gameOver = true;
+            document.getElementById('collectedPages').textContent = game.collectedPages;
+            document.getElementById('completeTime').textContent = 
+                document.getElementById('timer').textContent;
+            document.getElementById('levelComplete').style.display = 'block';
+        }
+
+        function updateTimer() {
+            if (!game.startTime) return;
+            
+            game.elapsedTime = Math.floor((Date.now() - game.startTime) / 1000);
+            const minutes = Math.floor(game.elapsedTime / 60);
+            const seconds = game.elapsedTime % 60;
+            document.getElementById('timer').textContent = 
+                `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function setupEventListeners() {
+            // Keyboard controls
+            window.addEventListener('keydown', (e) => {
+                game.keys[e.key] = true;
+                if (e.key === ' ') e.preventDefault(); // Prevent spacebar scrolling
+            });
+            
+            window.addEventListener('keyup', (e) => {
+                game.keys[e.key] = false;
+            });
+            
+            // Mouse controls for light
+            game.canvas.addEventListener('mousedown', (e) => {
+                const rect = game.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                const dist = Math.sqrt(
+                    Math.pow(x - game.light.x, 2) + 
+                    Math.pow(y - game.light.y, 2)
+                );
+                
+                if (dist < game.light.radius) {
+                    game.light.dragging = true;
+                }
+            });
+            
+            game.canvas.addEventListener('mousemove', (e) => {
+                if (game.light.dragging) {
+                    const rect = game.canvas.getBoundingClientRect();
+                    game.light.x = e.clientX - rect.left;
+                    game.light.y = e.clientY - rect.top;
+                    
+                    // Keep in bounds
+                    game.light.x = Math.max(game.light.radius, 
+                        Math.min(game.canvas.width - game.light.radius, game.light.x));
+                    game.light.y = Math.max(game.light.radius, 
+                        Math.min(game.canvas.height - game.light.radius, game.light.y));
+                }
+            });
+            
+            window.addEventListener('mouseup', () => {
+                game.light.dragging = false;
+            });
+            
+            // Touch controls
+            game.canvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (e.touches.length > 0) {
+                    const rect = game.canvas.getBoundingClientRect();
+                    const x = e.touches[0].clientX - rect.left;
+                    const y = e.touches[0].clientY - rect.top;
+                    
+                    const dist = Math.sqrt(
+                        Math.pow(x - game.light.x, 2) + 
+                        Math.pow(y - game.light.y, 2)
+                    );
+                    
+                    if (dist < game.light.radius) {
+                        game.light.dragging = true;
+                    }
+                }
+            });
+            
+            game.canvas.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                if (game.light.dragging && e.touches.length > 0) {
+                    const rect = game.canvas.getBoundingClientRect();
+                    game.light.x = e.touches[0].clientX - rect.left;
+                    game.light.y = e.touches[0].clientY - rect.top;
+                    
+                    game.light.x = Math.max(game.light.radius, 
+                        Math.min(game.canvas.width - game.light.radius, game.light.x));
+                    game.light.y = Math.max(game.light.radius, 
+                        Math.min(game.canvas.height - game.light.radius, game.light.y));
+                }
+            });
+            
+            game.canvas.addEventListener('touchend', () => {
+                game.light.dragging = false;
+            });
+            
+            // Mobile controls
+            document.getElementById('leftBtn').addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                game.keys['ArrowLeft'] = true;
+            });
+            
+            document.getElementById('leftBtn').addEventListener('touchend', (e) => {
+                e.preventDefault();
+                game.keys['ArrowLeft'] = false;
+            });
+            
+            document.getElementById('rightBtn').addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                game.keys['ArrowRight'] = true;
+            });
+            
+            document.getElementById('rightBtn').addEventListener('touchend', (e) => {
+                e.preventDefault();
+                game.keys['ArrowRight'] = false;
+            });
+            
+            document.getElementById('jumpBtn').addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                game.keys[' '] = true;
+            });
+            
+            document.getElementById('jumpBtn').addEventListener('touchend', (e) => {
+                e.preventDefault();
+                game.keys[' '] = false;
+            });
+            
+            // Button controls
+            document.getElementById('restartBtn').addEventListener('click', () => {
+                loadLevel(game.currentLevel);
+            });
+            
+            document.getElementById('hintBtn').addEventListener('click', () => {
+                alert('Hint: Position the light to create shadow bridges between platforms. The puppet can only walk on shadows!');
+            });
+            
+            document.getElementById('nextBtn').addEventListener('click', () => {
+                if (game.currentLevel < CONFIG.levels.length - 1) {
+                    loadLevel(game.currentLevel + 1);
+                } else {
+                    alert('Congratulations! You completed all levels!');
+                    loadLevel(0);
+                }
+            });
+            
+            document.getElementById('retryBtn').addEventListener('click', () => {
+                loadLevel(game.currentLevel);
+            });
+            
+            // Prevent context menu on canvas
+            game.canvas.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                return false;
+            });
+        }
+
+        // Initialize game when page loads
+        window.addEventListener('load', init);
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (game.canvas) {
+                const container = document.getElementById('gameArea');
+                game.canvas.width = container.clientWidth;
+                game.canvas.height = container.clientHeight;
+            }
+        });
+    </script>
+</body>
+</html>
