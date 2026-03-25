@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>003 - Starlight Sort</title>
+<style>
+  html,body{height:100%;margin:0;font-family:system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(#081126,#0b2540);color:#fff}
+  #game{display:flex;flex-direction:column;align-items:center;height:100vh;padding:18px;box-sizing:border-box}
+  #board{background:linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.02));padding:12px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.5)}
+  canvas{display:block;background:transparent;border-radius:8px}
+  #hud{width:100%;max-width:520px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  button{padding:8px 12px;border-radius:8px;border:none;background:#6ec6ff;color:#012;font-weight:700}
+  #instructions{margin-top:8px;color:#cfe9ff;max-width:520px;text-align:center}
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="hud">
+    <button id="reset">Reset</button>
+    <div>Score: <span id="score">0</span></div>
+    <div id="level">Level: 1</div>
+  </div>
+  <div id="board">
+    <canvas id="c" width="480" height="480"></canvas>
+  </div>
+  <div id="instructions">
+    Controls: Click or tap two adjacent stars to swap them. Make a line of 3+ matching colored stars horizontally or vertically to clear them. Matches create shooting stars that clear a row. Try to reach the target score. (Mobile: tap; Desktop: click)
+  </div>
+</div>
+<script>
+// Simple match-3 grid for Starlight Sort (click-swap mechanic)
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const cols = 8, rows = 8;
+const cell = canvas.width/cols;
+const colors = ['#ffd166','#ff6b6b','#6bcB77','#4d96ff','#c77cff','#ffb86b'];
+let grid = [];
+let score = 0;
+let selected = null;
+let level = 1;
+function rand(){return Math.floor(Math.random()*colors.length)}
+function init(){score=0;selected=null;grid=[];for(let y=0;y<rows;y++){let r=[];for(let x=0;x<cols;x++){r.push(rand());}grid.push(r);} // ensure no immediate matches
+ removeInitialMatches();draw();updateHud();}
+function removeInitialMatches(){let changed=true;while(changed){changed=false;for(let y=0;y<rows;y++){for(let x=0;x<cols;x++){const m=matchAt(x,y);if(m.length>=3){grid[y][x]=rand();changed=true;}}}}}
+function draw(){ctx.clearRect(0,0,canvas.width,canvas.height);for(let y=0;y<rows;y++){for(let x=0;x<cols;x++){const colIdx=grid[y][x];const cx=(x+0.5)*cell, cy=(y+0.5)*cell; // star draw
+ drawStar(cx,cy,cell*0.38,5,0.5,colors[colIdx]); if(selected && selected[0]===x && selected[1]===y){ctx.strokeStyle='rgba(255,255,255,0.9)';ctx.lineWidth=3;ctx.beginPath();ctx.rect(x*cell+3,y*cell+3,cell-6,cell-6);ctx.stroke();}}}}
+function drawStar(cx,cy,outerR,points,innerRatio,fill){const innerR=outerR*innerRatio;ctx.beginPath();for(let i=0;i<points*2;i++){const r=(i%2===0)?outerR:innerR;const a=(Math.PI/points)*i - Math.PI/2;ctx.lineTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r);}ctx.closePath();ctx.fillStyle=fill;ctx.fill();ctx.strokeStyle='rgba(255,255,255,0.05)';ctx.stroke();}
+canvas.addEventListener('click',e=>{const rect=canvas.getBoundingClientRect();const mx=e.clientX-rect.left;const my=e.clientY-rect.top;const x=Math.floor(mx/cell), y=Math.floor(my/cell);if(x<0||y<0||x>=cols||y>=rows) return; if(!selected){selected=[x,y]; draw();} else {const [sx,sy]=selected; if(Math.abs(sx-x)+Math.abs(sy-y)===1){swap(sx,sy,x,y); // check matches
+ const m1=findMatches(); if(m1.length>0){resolveMatches();} else { // revert
+ swap(sx,sy,x,y); selected=null; flashSwap(x,y); } } else {selected=[x,y];} draw();}});
+function swap(x1,y1,x2,y2){const t=grid[y1][x1];grid[y1][x1]=grid[y2][x2];grid[y2][x2]=t;}
+function flashSwap(x,y){// visual feedback - small shake
+ const id=setInterval(()=>{ctx.save();ctx.translate(Math.random()*2-1,Math.random()*2-1);draw();ctx.restore();},50);setTimeout(()=>{clearInterval(id);draw();},300);}
+function matchAt(x,y){const val=grid[y][x];const cells=[[x,y]]; // horizontal
+ let lx=x-1;while(lx>=0 && grid[y][lx]===val){cells.push([lx,y]);lx--;} lx=x+1;while(lx<cols && grid[y][lx]===val){cells.push([lx,y]);lx++;}
+ let vert=[]; let uy=y-1;while(uy>=0 && grid[uy][x]===val){vert.push([x,uy]);uy--;} uy=y+1;while(uy<rows && grid[uy][x]===val){vert.push([x,uy]);uy++;}
+ const horLen=cells.length; const verLen=vert.length+1; if(horLen>=3 && horLen>=verLen){return cells;} if(verLen>=3){return [[x,y],...vert];} return []}
+function findMatches(){const seen=new Set();const out=[];for(let y=0;y<rows;y++){for(let x=0;x<cols;x++){const key=x+','+y; if(seen.has(key)) continue; const m=matchAt(x,y); if(m.length>=3){m.forEach(c=>seen.add(c[0]+','+c[1])); out.push(...m);} }}return out}
+function resolveMatches(){let total=0; const matches=findMatches(); if(matches.length===0) return; // remove
+ const removeMap=new Set(); for(const [x,y] of matches){removeMap.add(x+','+y);} total=removeMap.size; // award points
+ score += total*10; // simple scoring
+ for(const s of removeMap){const [x,y]=s.split(',').map(Number);grid[y][x]=null;} collapse(); setTimeout(()=>{if(findMatches().length>0){resolveMatches();} else {selected=null; draw(); updateHud();}},180);}
+function collapse(){for(let x=0;x<cols;x++){let write=rows-1;for(let y=rows-1;y>=0;y--){if(grid[y][x]!==null){grid[write][x]=grid[y][x];write--;}}for(let y=write;y>=0;y--){grid[y][x]=rand();}}}
+function updateHud(){document.getElementById('score').textContent=score;document.getElementById('level').textContent='Level: '+level}
+window.addEventListener('resize',()=>{});
+document.getElementById('reset').addEventListener('click',()=>{init();});
+init();
+</script>
+</body>
+</html>
