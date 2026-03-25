@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>009 - Pizza Assembly Line</title>
+<style>
+:root{--bg:#f8efe0;--panel:#fff;--accent:#ff6b6b;--muted:#6b6b6b}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#fffefc,#f3f7fb)}
+.app{display:flex;flex-direction:column;align-items:center;padding:16px}
+.header{width:100%;max-width:1200px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.title{font-weight:800;color:#0b2a3a}
+.controls{display:flex;gap:8px}
+.btn{background:var(--panel);border:1px solid rgba(10,30,60,0.06);padding:8px 12px;border-radius:10px;color:#0b2a3a;cursor:pointer}
+.container{width:100%;max-width:1200px;display:flex;gap:12px}
+.left{flex:1}
+.stage{background:linear-gradient(180deg,#fff,#f5f7fa);border-radius:12px;padding:12px;border:1px solid rgba(10,30,60,0.04)}
+.conveyor{position:relative;height:280px;background:linear-gradient(180deg,#efe9e0,#efe0d6);border-radius:8px;overflow:hidden}
+.belt{position:absolute;left:0;right:0;bottom:0;height:80px;background:linear-gradient(180deg,#2b2b2b,#1b1b1b);border-top:6px solid rgba(255,255,255,0.02)}
+.pizza{position:absolute;width:120px;height:120px;border-radius:50%;box-shadow:0 6px 18px rgba(0,0,0,0.12);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff}
+.station-panel{width:320px}
+.panel{background:linear-gradient(180deg,#ffffff,#fbfbfb);padding:12px;border-radius:10px;border:1px solid rgba(10,30,60,0.04);margin-bottom:12px}
+.toppings{display:flex;flex-wrap:wrap;gap:8px}
+.topping{width:64px;height:64px;border-radius:8px;background:#fff;border:1px solid rgba(10,30,60,0.06);display:flex;align-items:center;justify-content:center;cursor:grab}
+.order{display:flex;flex-direction:column;gap:6px}
+.order .slot{width:220px;height:34px;background:#fff;border-radius:6px;border:1px dashed rgba(0,0,0,0.06);display:flex;align-items:center;padding:6px;gap:8px}
+.hud{display:flex;gap:12px;align-items:center}
+.score{font-weight:700}
+.footer{font-size:12px;color:var(--muted);margin-top:12px;text-align:center}
+.dragging{opacity:0.6}
+@media(max-width:900px){.container{flex-direction:column}.station-panel{width:100%}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="title">009 - Pizza Assembly Line</div>
+    <div class="controls">
+      <div class="hud"><div class="score">Score: <span id="score">0</span></div></div>
+      <button class="btn" id="restart">Restart</button>
+    </div>
+  </div>
+  <div class="container">
+    <div class="left">
+      <div class="stage">
+        <div class="conveyor" id="conveyor">
+          <div class="belt"></div>
+          <!-- pizzas will be appended here -->
+        </div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:12px;align-items:center">
+        <div>Lives: <span id="lives">3</span></div>
+        <div>Time: <span id="time">60</span>s</div>
+      </div>
+    </div>
+    <div class="station-panel">
+      <div class="panel">
+        <div style="font-weight:700;margin-bottom:6px">Active Orders</div>
+        <div id="orders"></div>
+      </div>
+      <div class="panel">
+        <div style="font-weight:700;margin-bottom:6px">Topping Stations</div>
+        <div class="toppings" id="toppings"></div>
+        <div class="hint" style="margin-top:8px;font-size:13px;color:#3b5a72">Drag toppings onto moving pizzas. Complete the order before the pizza reaches the oven end of the belt.</div>
+      </div>
+      <div class="panel" id="controlsPanel">
+        <div style="font-weight:700;margin-bottom:6px">Controls</div>
+        <div style="font-size:13px;color:#456175">Drag toppings to pizzas. Click toppings to pick then click pizza to place (alternative). Use Restart to reset.</div>
+      </div>
+    </div>
+  </div>
+  <div class="footer">Prototype - add art and audio for portal submission. Uses simple drag/drop and order matching mechanics.</div>
+</div>
+<script>
+// 009 - Pizza Assembly Line - Prototype
+(() => {
+  const conveyor = document.getElementById('conveyor');
+  const toppingsEl = document.getElementById('toppings');
+  const ordersEl = document.getElementById('orders');
+  const scoreEl = document.getElementById('score');
+  const livesEl = document.getElementById('lives');
+  const timeEl = document.getElementById('time');
+  const restartBtn = document.getElementById('restart');
+
+  const TOPPINGS = [
+    {id:'cheese', label:'🧀'},
+    {id:'pepperoni', label:'🍕'},
+    {id:'mushroom', label:'🍄'},
+    {id:'pepper', label:'🫑'},
+    {id:'olive', label:'🫒'},
+    {id:'pineapple', label:'🍍'}
+  ];
+
+  let state = {
+    score:0,
+    lives:3,
+    time:60,
+    pizzas:[], // active pizzas on belt
+    orders:[], // active orders
+    nextPizzaId:1,
+    running:false
+  };
+
+  const BELT_START = 40; // px from left
+  const BELT_END = 900; // will be scaled
+  const PIZZA_SIZE = 120;
+  const SPAWN_INTERVAL = 2500; // ms
+  let spawnTimer = null;
+  let clockTimer = null;
+
+  function setup(){
+    buildToppings();
+    restart();
+    window.addEventListener('resize',layout);
+  }
+
+  function layout(){
+    const rect = conveyor.getBoundingClientRect();
+    // update belt end position for pizza travel
+  }
+
+  function buildToppings(){
+    toppingsEl.innerHTML='';
+    TOPPINGS.forEach(t=>{
+      const d = document.createElement('div'); d.className='topping'; d.draggable=true; d.dataset.tid=t.id; d.title=t.id; d.textContent=t.label;
+      d.addEventListener('dragstart', onDragStart);
+      d.addEventListener('click', onToppingClick);
+      toppingsEl.appendChild(d);
+    });
+  }
+
+  function onDragStart(e){
+    const id = e.target.dataset.tid; e.dataTransfer.setData('text/plain', id);
+    e.dataTransfer.effectAllowed = 'copy';
+  }
+
+  // click-to-pick alternative
+  let pickedTopping = null;
+  function onToppingClick(e){ pickedTopping = e.currentTarget.dataset.tid; e.currentTarget.classList.add('dragging'); setTimeout(()=>e.currentTarget.classList.remove('dragging'),400); }
+
+  function spawnPizza(){
+    const id = state.nextPizzaId++;
+    const el = document.createElement('div'); el.className='pizza'; el.style.left = '-160px'; el.style.top = '80px'; el.style.width = PIZZA_SIZE+'px'; el.style.height = PIZZA_SIZE+'px'; el.style.background = 'linear-gradient(180deg,#f39c12,#ffcf8a)'; el.dataset.id = id;
+    // toppings overlay
+    const toppingsLayer = document.createElement('div'); toppingsLayer.style.position='absolute'; toppingsLayer.style.inset='0'; toppingsLayer.style.display='flex'; toppingsLayer.style.flexWrap='wrap'; toppingsLayer.style.alignContent='center'; toppingsLayer.style.justifyContent='center'; toppingsLayer.style.pointerEvents='none'; toppingsLayer.style.gap='6px'; el.appendChild(toppingsLayer);
+    conveyor.appendChild(el);
+
+    // enable drop
+    el.addEventListener('dragover', e=>{ e.preventDefault(); e.dataTransfer.dropEffect='copy'; });
+    el.addEventListener('drop', onPizzaDrop);
+    el.addEventListener('click', onPizzaClick);
+
+    const pizza = {id, el, x:-160, speed:0.06 + Math.random()*0.04, toppings:[]};
+    state.pizzas.push(pizza);
+  }
+
+  function onPizzaDrop(e){ e.preventDefault(); const tid = e.dataTransfer.getData('text/plain'); placeToppingOnPizza(e.currentTarget.dataset.id, tid); }
+  function onPizzaClick(e){ const pid = e.currentTarget.dataset.id; if(pickedTopping){ placeToppingOnPizza(pid, pickedTopping); pickedTopping=null; } }
+
+  function placeToppingOnPizza(pid, tid){ const p = state.pizzas.find(x=>String(x.id)===String(pid)); if(!p) return; if(p.toppings.includes(tid)) return; p.toppings.push(tid); renderPizzaToppings(p); checkOrderMatchForPizza(p); }
+
+  function renderPizzaToppings(p){ const layer = p.el.firstChild; layer.innerHTML = ''; p.toppings.forEach(tid=>{ const t = TOPPINGS.find(x=>x.id===tid); if(!t) return; const span = document.createElement('div'); span.style.width='36px'; span.style.height='36px'; span.style.borderRadius='6px'; span.style.background='rgba(255,255,255,0.6)'; span.style.display='flex'; span.style.alignItems='center'; span.style.justifyContent='center'; span.textContent = t.label; layer.appendChild(span); }); }
+
+  function start(){
+    state.running = true; state.score=0; state.lives=3; state.time=60; updateHUD();
+    spawnTimer = setInterval(spawnPizza, SPAWN_INTERVAL);
+    clockTimer = setInterval(()=>{ state.time--; updateHUD(); if(state.time<=0) gameOver(); },1000);
+    // start animation
+    requestAnimationFrame(step);
+    // initial orders
+    for(let i=0;i<3;i++) addOrder();
+  }
+
+  function restart(){
+    // clear pizzas and orders
+    state.pizzas.forEach(p=>{ if(p.el && p.el.parentNode) p.el.parentNode.removeChild(p.el); }); state.pizzas=[]; state.orders=[]; state.nextPizzaId=1;
+    ordersEl.innerHTML='';
+    // reset
+    state.score=0; state.lives=3; state.time=60; updateHUD();
+    if(spawnTimer) clearInterval(spawnTimer); if(clockTimer) clearInterval(clockTimer);
+    // spawn initial pizzas
+    spawnPizza(); spawnPizza();
+    // ensure orders
+    ordersEl.innerHTML=''; state.orders=[]; for(let i=0;i<3;i++) addOrder();
+    start();
+  }
+
+  function addOrder(){
+    const size = 2 + Math.floor(Math.random()*3); // 2-4 toppings
+    const choices = TOPPINGS.map(t=>t.id).sort(()=>Math.random()-0.5).slice(0,size);
+    const order = {id:Date.now()+Math.random(), toppings:choices, filled:false};
+    state.orders.push(order);
+    renderOrders();
+  }
+
+  function renderOrders(){ ordersEl.innerHTML=''; state.orders.forEach(o=>{
+      const div = document.createElement('div'); div.className='order';
+      const slot = document.createElement('div'); slot.className='slot';
+      o.toppings.forEach(tid=>{ const t = TOPPINGS.find(x=>x.id===tid); const s=document.createElement('div'); s.style.fontSize='20px'; s.textContent=t.label; slot.appendChild(s); });
+      div.appendChild(slot);
+      const status = document.createElement('div'); status.style.fontSize='12px'; status.style.color='#3b5a72'; status.textContent = o.filled? 'Ready' : 'Pending'; div.appendChild(status);
+      ordersEl.appendChild(div);
+    }); }
+
+  function checkOrderMatchForPizza(p){
+    for(const o of state.orders){
+      if(o.filled) continue;
+      // match if pizza toppings include all required toppings (order may be subset)
+      const ok = o.toppings.every(t=>p.toppings.includes(t));
+      if(ok){
+        // fill order
+        o.filled = true; state.score += 100; updateHUD(); renderOrders(); // mark pizza visually
+        p.el.style.outline = '4px solid rgba(50,200,50,0.6)';
+        // schedule pizza to be removed when reaches oven
+      }
+    }
+  }
+
+  function updateHUD(){ scoreEl.textContent = state.score; livesEl.textContent = state.lives; timeEl.textContent = state.time; }
+
+  function step(timestamp){
+    const rect = conveyor.getBoundingClientRect();
+    const width = rect.width;
+    // move pizzas
+    for(let i=state.pizzas.length-1;i>=0;i--){
+      const p = state.pizzas[i];
+      p.x += p.speed * (width/600); // scale speed
+      p.el.style.left = Math.round(p.x) + 'px';
+      // if pizza reaches right side (oven)
+      if(p.x > width - 140){
+        // if pizza filled with a ready order -> success else lose life
+        const matchedOrder = state.orders.find(o=>o.filled && o.toppings.every(t=>p.toppings.includes(t)));
+        if(matchedOrder){
+          // complete order
+          state.orders = state.orders.filter(o=>o!==matchedOrder);
+          renderOrders(); addOrder(); state.score += 50; updateHUD();
+        } else {
+          state.lives -= 1; updateHUD();
+          if(state.lives<=0){ gameOver(); }
+        }
+        // remove pizza element
+        if(p.el && p.el.parentNode) p.el.parentNode.removeChild(p.el);
+        state.pizzas.splice(i,1);
+      }
+    }
+    if(state.running) requestAnimationFrame(step);
+  }
+
+  function gameOver(){ state.running=false; if(spawnTimer) clearInterval(spawnTimer); if(clockTimer) clearInterval(clockTimer); alert('Game over! Score: '+state.score); }
+
+  restartBtn.addEventListener('click',()=>{ if(confirm('Restart level?')) restart(); });
+
+  // allow toppings to be clicked for alternative placement
+  conveyor.addEventListener('click', e=>{
+    // clear picked topping if click on empty
+    pickedTopping = null;
+  });
+
+  // initial setup
+  setup();
+})();
+</script>
+</body>
+</html>
