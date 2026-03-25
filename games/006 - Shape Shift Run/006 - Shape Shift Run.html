@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>006 - Shape Shift Run</title>
+<style>
+  body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial;background:#0b0b12;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh}
+  .card{width:900px;max-width:96%;background:linear-gradient(180deg,#08101a,#07121a);padding:18px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.6)}
+  h1{margin:0 0 8px;font-size:20px}
+  canvas{background:linear-gradient(#041018,#02101a);display:block;border-radius:8px;width:100%;height:360px}
+  .controls{margin-top:8px;color:#bcd}
+  .hint{font-size:13px;color:#89b}
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>006 - Shape Shift Run</h1>
+    <p class="hint">Tap/Click to jump. Press 1=Circle, 2=Square, 3=Triangle to morph. Different shapes interact with obstacles differently.</p>
+    <canvas id="c" width="860" height="360"></canvas>
+    <div class="controls">Score: <span id="score">0</span> &nbsp; | &nbsp; Shape: <span id="shape">Circle</span></div>
+  </div>
+<script>
+const canvas=document.getElementById('c');const ctx=canvas.getContext('2d');let W=canvas.width,H=canvas.height;
+let player={x:120,y:H-70,w:40,h:40,vx:0,vy:0,ground:H-50,shape:'circle',onGround:true};
+let obstacles=[];let tick=0,score=0;const shapeEl=document.getElementById('shape');const scoreEl=document.getElementById('score');
+function resize(){W=canvas.width=canvas.clientWidth;H=canvas.height=360;player.ground=H-50;}window.addEventListener('resize',resize);resize();
+function spawnObstacle(){const type=Math.random()<0.5?'low':'high';const obs={x:W+60,y:type==='low'?player.ground-20:player.ground-120,w:type==='low'?30:40,h:type==='low'?40:80,type};obstacles.push(obs);} 
+function update(){tick++; // movement
+player.vy+=0.9;player.y+=player.vy; if(player.y>player.ground){player.y=player.ground;player.vy=0;player.onGround=true}
+// obstacles
+for(let i=obstacles.length-1;i>=0;i--){obstacles[i].x-=6; if(obstacles[i].x+obstacles[i].w< -50) obstacles.splice(i,1);}
+if(Math.random()<0.02) spawnObstacle();
+// collisions
+for(const o of obstacles){if(collide(player,o)){handleCollision(o);}}
+score+=0.1;scoreEl.textContent=Math.floor(score);
+}
+function collide(p,o){const px=p.x,py=p.y,prw=p.w,prh=p.h; const ox=o.x,oy=o.y; return px<ox+o.w && px+prw>ox && py<oy+o.h && py+prh>oy;}
+function handleCollision(o){ // behavior depends on shape
+if(player.shape==='circle'){ // circle can roll under low obstacles (we interpret low as passable if circle)
+ if(o.type==='low') return; // pass
+}
+if(player.shape==='triangle'){ // triangle can break high obstacles
+ if(o.type==='high'){ // destroy obstacle
+ const idx=obstacles.indexOf(o); if(idx>=0)obstacles.splice(idx,1); score+=10; return; }
+}
+if(player.shape==='square'){ // square can push low obstacles (destroy)
+ if(o.type==='low'){const idx=obstacles.indexOf(o); if(idx>=0)obstacles.splice(idx,1); score+=5; return; }
+}
+// otherwise game over
+stopGame();}
+let running=true;function stopGame(){running=false;alert('Game over! Score: '+Math.floor(score)); location.reload();}
+function draw(){ctx.clearRect(0,0,W,H); // background
+const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#02121a');g.addColorStop(1,'#021318');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+// ground
+ctx.fillStyle='#08323b';ctx.fillRect(0,player.ground+player.h, W, H-player.ground);
+// player
+ctx.save();ctx.translate(player.x,player.y);
+ctx.fillStyle='#ffd166'; if(player.shape==='circle'){ctx.beginPath();ctx.arc(0,0,player.w/2,0,Math.PI*2);ctx.fill();}
+if(player.shape==='square'){ctx.fillRect(-player.w/2,-player.h/2,player.w,player.h);} if(player.shape==='triangle'){ctx.beginPath();ctx.moveTo(0,-player.h/2);ctx.lineTo(player.w/2,player.h/2);ctx.lineTo(-player.w/2,player.h/2);ctx.closePath();ctx.fill();}
+ctx.restore();
+// obstacles
+ctx.fillStyle='#ff6b6b';for(const o of obstacles){ctx.fillRect(o.x,o.y,o.w,o.h);} 
+}
+function loop(){if(!running) return; update(); draw(); requestAnimationFrame(loop);} loop();
+// input
+canvas.addEventListener('click',()=>{if(player.onGround){player.vy=-14;player.onGround=false}});
+window.addEventListener('keydown',e=>{if(e.key==='1'){player.shape='circle';shapeEl.textContent='Circle'} if(e.key==='2'){player.shape='square';shapeEl.textContent='Square'} if(e.key==='3'){player.shape='triangle';shapeEl.textContent='Triangle'} if(e.key===' ' && player.onGround){player.vy=-14;player.onGround=false}});
+</script>
+</body>
+</html>
