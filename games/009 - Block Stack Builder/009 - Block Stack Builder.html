@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>009 - Block Stack Builder</title>
+<style>
+  html, body {
+    height: 100%;
+    margin: 0;
+    font-family: system-ui, Segoe UI, Roboto, Arial;
+    background: linear-gradient(#0a1a2a, #162b3d);
+    color: #fff;
+    overflow: hidden;
+  }
+  #game {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100vh;
+    padding: 10px;
+    box-sizing: border-box;
+  }
+  #hud {
+    width: 100%;
+    max-width: 800px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding: 0 10px;
+  }
+  #hud > div {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-weight: bold;
+  }
+  #materialSelector {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .materialBtn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: none;
+    background: #2a4a6a;
+    color: white;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  .materialBtn.active {
+    background: #4d96ff;
+    box-shadow: 0 0 8px #4d96ff;
+  }
+  #canvasContainer {
+    position: relative;
+    width: 100%;
+    max-width: 800px;
+    flex-grow: 1;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    background: #0f2439;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  #instructions {
+    margin-top: 10px;
+    color: #a0c8ff;
+    text-align: center;
+    max-width: 800px;
+    font-size: 14px;
+  }
+  button#restart {
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: none;
+    background: #ff6b6b;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  button#restart:hover {
+    background: #ff5252;
+  }
+  #gameOver {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.85);
+    padding: 30px;
+    border-radius: 12px;
+    text-align: center;
+    display: none;
+    z-index: 100;
+  }
+  #windIndicator {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(255,255,255,0.2);
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+  <div id="game">
+    <div id="hud">
+      <div>Height: <span id="height">0</span> blocks</div>
+      <div>Score: <span id="score">0</span></div>
+      <div>Level: <span id="level">1</span></div>
+      <button id="restart">Restart</button>
+    </div>
+    <div id="materialSelector">
+      <button class="materialBtn active" data-material="wood">Wood (Light)</button>
+      <button class="materialBtn" data-material="stone">Stone (Heavy)</button>
+      <button class="materialBtn" data-material="rubber">Rubber (Bouncy)</button>
+      <button class="materialBtn" data-material="ice">Ice (Slippery)</button>
+    </div>
+    <div id="canvasContainer">
+      <canvas id="gameCanvas"></canvas>
+      <div id="windIndicator">Wind: None</div>
+      <div id="gameOver">
+        <h2>Tower Toppled!</h2>
+        <p>Your tower reached <span id="finalHeight">0</span> blocks.</p>
+        <p>Score: <span id="finalScore">0</span></p>
+        <button id="tryAgain">Try Again</button>
+      </div>
+    </div>
+    <div id="instructions">
+      Click/tap to drop the swinging block. Build the tallest tower possible. Different materials affect stability. Avoid toppling! Wind and earthquakes will appear in later levels.
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.18.0/matter.min.js"></script>
+  <script>
+    // Game configuration
+    const CONFIG = {
+      blockSize: 40,
+      craneLength: 180,
+      swingSpeed: 0.03,
+      baseWidth: 400,
+      baseHeight: 20,
+      materials: {
+        wood: { density: 0.001, friction: 0.5, restitution: 0.2, color: '#8B4513' },
+        stone: { density: 0.005, friction: 0.8, restitution: 0.1, color: '#808080' },
+        rubber: { density: 0.0008, friction: 0.9, restitution: 0.9, color: '#FF5252' },
+        ice: { density: 0.001, friction: 0.05, restitution: 0.05, color: '#A0E6FF' }
+      },
+      windForce: 0.02,
+      earthquakeForce: 0.05,
+      levelHeight: 5 // blocks per level
+    };
+
+    // Game state
+    let engine, render, world;
+    let canvas;
+    let currentBlock = null;
+    let craneConstraint = null;
+    let swingAngle = 0;
+    let score = 0;
+    let towerHeight = 0;
+    let level = 1;
+    let currentMaterial = 'wood';
+    let gameOver = false;
+    let blocks = [];
+    let windDirection = 0; // -1 left, 0 none, 1 right
+    let windTimer = 0;
+    let earthquakeTimer = 0;
+
+    // Initialize Matter.js
+    function initGame() {
+      canvas = document.getElementById('gameCanvas');
+
+      // Set canvas dimensions
+      resizeCanvas();
+      window.addEventListener('resize', resizeCanvas);
+
+      // Create Matter.js engine
+      engine = Matter.Engine.create();
+      world = engine.world;
+      engine.gravity.y = 1; // standard gravity
+
+      // Create renderer (optional, we will use Matter's renderer)
+      render = Matter.Render.create({
+        canvas: canvas,
+        engine: engine,
+        options: {
+          width: canvas.width,
+          height: canvas.height,
+          wireframes: false,
+          background: 'transparent',
+          showVelocity: false,
+          showCollisions: false
+        }
+      });
+      Matter.Render.run(render);
+
+      // Create base platform
+      const base = Matter.Bodies.rectangle(
+        canvas.width / 2,
+        canvas.height - CONFIG.baseHeight / 2,
+        CONFIG.baseWidth,
+        CONFIG.baseHeight,
+        { isStatic: true, render: { fillStyle: '#4a5a6a' } }
+      );
+      Matter.World.add(world, base);
+
+      // Create walls to contain blocks
+      const wallLeft = Matter.Bodies.rectangle(
+        10, canvas.height / 2,
+        20, canvas.height,
+        { isStatic: true, render: { fillStyle: '#2a3a4a' } }
+      );
+      const wallRight = Matter.Bodies.rectangle(
+        canvas.width - 10, canvas.height / 2,
+        20, canvas.height,
+        { isStatic: true, render: { fillStyle: '#2a3a4a' } }
+      );
+      Matter.World.add(world, [wallLeft, wallRight]);
+
+      // Create swinging crane pivot
+      const cranePivot = Matter.Bodies.circle(
+        canvas.width / 2,
+        60,
+        10,
+        { isStatic: true, render: { fillStyle: '#ffcc00' } }
+      );
+      Matter.World.add(world, cranePivot);
+
+      // Create initial swinging block
+      createNewBlock();
+
+      // Run engine
+      Matter.Engine.run(engine);
+
+      // Start game loop
+      requestAnimationFrame(gameLoop);
+
+      // Event listeners
+      canvas.addEventListener('click', dropBlock);
+      document.getElementById('restart').addEventListener('click', resetGame);
+      document.getElementById('tryAgain').addEventListener('click', resetGame);
+      document.querySelectorAll('.materialBtn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.materialBtn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          currentMaterial = btn.dataset.material;
+        });
+      });
+    }
+
+    function resizeCanvas() {
+      const container = document.getElementById('canvasContainer');
+      canvas.width = container.clientWidth;
+      canvas.height = container.clientHeight;
+      if (render) {
+        Matter.Render.setPixelRatio(render, window.devicePixelRatio);
+        render.options.width = canvas.width;
+        render.options.height = canvas.height;
+        Matter.Render.lookAt(render, world.bounds);
+      }
+    }
+
+    function createNewBlock() {
+      const material = CONFIG.materials[currentMaterial];
+      const block = Matter.Bodies.rectangle(
+        canvas.width / 2,
+        60 + CONFIG.craneLength,
+        CONFIG.blockSize,
+        CONFIG.blockSize,
+        {
+          density: material.density,
+          friction: material.friction,
+          restitution: material.restitution,
+          render: { fillStyle: material.color },
+          label: currentMaterial
+        }
+      );
+
+      // Create constraint (rope) between pivot and block
+      craneConstraint = Matter.Constraint.create({
+        pointA: { x: canvas.width / 2, y: 60 },
+        bodyB: block,
+        pointB: { x: 0, y: 0 },
+        length: CONFIG.craneLength,
+        stiffness: 0.9,
+        damping: 0.01,
+        render: { strokeStyle: '#ffffff', lineWidth: 2 }
+      });
+
+      Matter.World.add(world, [block, craneConstraint]);
+      currentBlock = block;
+      blocks.push(block);
+      swingAngle = 0;
+    }
+
+    function dropBlock() {
+      if (gameOver || !currentBlock || !craneConstraint) return;
+
+      // Remove constraint, block falls freely
+      Matter.World.remove(world, craneConstraint);
+      craneConstraint = null;
+
+      // After a short delay, create a new swinging block
+      setTimeout(() => {
+        if (!gameOver) createNewBlock();
+      }, 500);
+    }
+
+    function updateSwingingBlock() {
+      if (!currentBlock || !craneConstraint) return;
+
+      swingAngle += CONFIG.swingSpeed;
+      const pivotX = canvas.width / 2;
+      const pivotY = 60;
+      const targetX = pivotX + CONFIG.craneLength * Math.sin(swingAngle);
+      const targetY = pivotY + CONFIG.craneLength * Math.cos(swingAngle);
+      
+      // Apply force towards target position (simple pendulum simulation)
+      const dx = targetX - currentBlock.position.x;
+      const dy = targetY - currentBlock.position.y;
+      const force = 0.001;
+      Matter.Body.applyForce(currentBlock, currentBlock.position, { x: dx * force, y: dy * force });
+    }
+
+    function updateGameState() {
+      // Calculate tower height: find highest block (lowest y)
+      let maxY = canvas.height;
+      blocks.forEach(block => {
+        if (block.position.y < maxY) maxY = block.position.y;
+      });
+      const heightInBlocks = Math.max(0, Math.floor((canvas.height - maxY) / CONFIG.blockSize));
+      if (heightInBlocks > towerHeight) {
+        towerHeight = heightInBlocks;
+        score += towerHeight * 10;
+      }
+
+      // Level progression
+      const newLevel = Math.floor(towerHeight / CONFIG.levelHeight) + 1;
+      if (newLevel > level) {
+        level = newLevel;
+        // Increase swing speed slightly
+        CONFIG.swingSpeed = 0.03 + (level - 1) * 0.005;
+      }
+
+      // Update UI
+      document.getElementById('height').textContent = towerHeight;
+      document.getElementById('score').textContent = score;
+      document.getElementById('level').textContent = level;
+
+      // Wind effects (starting level 2)
+      if (level >= 2) {
+        windTimer++;
+        if (windTimer > 300) { // every ~5 seconds
+          windDirection = Math.random() > 0.5 ? 1 : -1;
+          windTimer = 0;
+        }
+        if (windDirection !== 0) {
+          blocks.forEach(block => {
+            Matter.Body.applyForce(block, block.position, { x: windDirection * CONFIG.windForce * (level - 1) * 0.5, y: 0 });
+          });
+          document.getElementById('windIndicator').textContent = windDirection > 0 ? 'Wind: Right →' : 'Wind: Left ←';
+        } else {
+          document.getElementById('windIndicator').textContent = 'Wind: None';
+        }
+      }
+
+      // Earthquake effects (starting level 3)
+      if (level >= 3) {
+        earthquakeTimer++;
+        if (earthquakeTimer > 600) { // every ~10 seconds
+          earthquakeTimer = 0;
+          // Apply random horizontal impulses to all blocks
+          blocks.forEach(block => {
+            Matter.Body.applyForce(block, block.position, { 
+              x: (Math.random() - 0.5) * CONFIG.earthquakeForce * (level - 2),
+              y: (Math.random() - 0.5) * CONFIG.earthquakeForce * (level - 2)
+            });
+          });
+        }
+      }
+
+      // Check stability (simple): if any block is tilted too much
+      if (!gameOver) {
+        for (let block of blocks) {
+          const angle = Math.abs(block.angle);
+          if (angle > 0.6) { // about 34 degrees
+            triggerGameOver();
+            break;
+          }
+        }
+      }
+    }
+
+    function triggerGameOver() {
+      gameOver = true;
+      document.getElementById('finalHeight').textContent = towerHeight;
+      document.getElementById('finalScore').textContent = score;
+      document.getElementById('gameOver').style.display = 'block';
+    }
+
+    function resetGame() {
+      // Clear world
+      Matter.World.clear(world, false);
+      Matter.Engine.clear(engine);
+      Matter.Render.stop(render);
+      render.canvas.remove();
+
+      // Reset state
+      currentBlock = null;
+      craneConstraint = null;
+      swingAngle = 0;
+      score = 0;
+      towerHeight = 0;
+      level = 1;
+      gameOver = false;
+      blocks = [];
+      windDirection = 0;
+      windTimer = 0;
+      earthquakeTimer = 0;
+      CONFIG.swingSpeed = 0.03;
+
+      // Reinitialize
+      initGame();
+      document.getElementById('gameOver').style.display = 'none';
+      document.getElementById('windIndicator').textContent = 'Wind: None';
+    }
+
+    function gameLoop() {
+      updateSwingingBlock();
+      updateGameState();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Start the game when page loads
+    window.addEventListener('load', initGame);
+  </script>
+</body>
+</html>
