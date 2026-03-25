@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>004 - Starlight Sort</title>
+<style>
+:root{--bg:#05091a;--panel:#071133;--accent:#ffd166;--muted:#9fb7d6}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#020417,#081336);color:#eaf6ff}
+.app{display:flex;flex-direction:column;align-items:center;padding:18px}
+.header{width:100%;max-width:1100px;display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.title{font-weight:700;font-size:18px;display:flex;align-items:center;gap:10px}
+.controls{display:flex;gap:8px}
+.btn{background:linear-gradient(180deg,var(--panel),#0b1b3a);border:1px solid rgba(255,255,255,0.04);padding:8px 12px;border-radius:8px;color:#fff;cursor:pointer}
+.container{width:100%;max-width:1100px;display:flex;gap:16px}
+.left{flex:1}
+.board-wrap{background:radial-gradient(circle at 20% 20%, rgba(255,255,255,0.02), transparent 10%), linear-gradient(180deg,#06102a,#021025);padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,0.03)}
+#board{display:grid;background:transparent;border-radius:8px;touch-action:none}
+.right{width:300px;background:linear-gradient(180deg,#07112a,#04202a);border-radius:12px;padding:12px;border:1px solid rgba(255,255,255,0.03)}
+.panel{background:rgba(255,255,255,0.02);padding:10px;border-radius:8px;margin-bottom:12px}
+.stat{font-size:13px;color:var(--muted);margin-top:6px}
+.hint{font-size:13px;color:#bcd9ef}
+.footer{font-size:12px;color:var(--muted);text-align:center;margin-top:12px}
+.overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(0,0,10,0.6),rgba(0,0,20,0.75));}
+.card{background:linear-gradient(180deg,#071433,#041228);padding:20px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.6);width:90%;max-width:420px;text-align:center}
+.big{font-size:20px;font-weight:700}
+.small{font-size:14px;color:var(--muted);margin-top:8px}
+@media(max-width:900px){.container{flex-direction:column}.right{width:100%}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="title">004 - Starlight Sort</div>
+    <div class="controls">
+      <button class="btn" id="mute">🔊</button>
+      <button class="btn" id="fullscreen">⤢</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="left">
+      <div class="board-wrap">
+        <div id="board"></div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+        <button class="btn" id="newGame">New Game</button>
+        <div class="stat">Level: <span id="level">1</span> &nbsp; Score: <span id="score">0</span></div>
+      </div>
+    </div>
+    <div class="right">
+      <div class="panel">
+        <div style="font-weight:700">How to play</div>
+        <div class="small">Swap adjacent stars (drag or click two). Match 3+ by color to clear. Bigger matches create shooting stars which clear a full row or spawn comet effects. Clear constellation patterns for bonus animations.</div>
+      </div>
+      <div class="panel">
+        <div style="font-weight:700">Objectives</div>
+        <div id="objectives">Score points by matching stars. Complete level targets before the sky fills.</div>
+      </div>
+      <div class="panel">
+        <div style="font-weight:700">Next special</div>
+        <div id="nextSpecial" class="hint">Make a T or L match to create a shooting star.</div>
+      </div>
+      <div class="panel">
+        <div style="font-weight:700">Controls</div>
+        <div class="small">Drag on touch or mouse to swap. Tap to select then tap neighbor to swap.</div>
+      </div>
+      <div class="panel" style="text-align:center">
+        <button class="btn" id="pauseBtn">Pause</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">Built as HTML5 prototype — ready for polishing for portal submission.</div>
+</div>
+
+<!-- Start / Pause overlays -->
+<div id="startOverlay" class="overlay">
+  <div class="card">
+    <div class="big">Starlight Sort</div>
+    <div class="small">Organize falling stars into constellations — match by color and size. Good luck, stargazer!</div>
+    <div style="margin-top:14px"><button class="btn" id="startBtn">Start Game</button></div>
+  </div>
+</div>
+
+<div id="pauseOverlay" class="overlay" style="display:none">
+  <div class="card">
+    <div class="big">Paused</div>
+    <div style="margin-top:12px"><button class="btn" id="resume">Resume</button></div>
+  </div>
+</div>
+
+<script>
+// 004 - Starlight Sort
+// A polished match-3 style prototype with constellation animations and special pieces.
+(function(){
+  const boardEl = document.getElementById('board');
+  const cols = 8, rows = 9; // grid size (cols x rows)
+  const colors = ['#ffd166','#ff6b6b','#6bb6ff','#c69bff','#6bf2b8'];
+  const colorNames = ['Gold','Crimson','Azure','Violet','Mint'];
+  let grid = []; // cells array
+  let selected = null;
+  let score = 0, level = 1;
+  let animating = false;
+  let fallingInterval = null;
+
+  // Build board DOM grid
+  function buildBoard(){
+    boardEl.style.gridTemplateColumns = `repeat(${cols}, 56px)`;
+    boardEl.style.gridTemplateRows = `repeat(${rows}, 56px)`;
+    boardEl.innerHTML = '';
+    grid = [];
+    for(let r=0;r<rows;r++){
+      for(let c=0;c<cols;c++){
+        const cell = document.createElement('div');
+        cell.style.width='54px';cell.style.height='54px';
+        cell.style.margin='1px';cell.style.borderRadius='8px';
+        cell.style.display='flex';cell.style.alignItems='center';cell.style.justifyContent='center';
+        cell.style.position='relative';
+        cell.dataset.r=r;cell.dataset.c=c;
+        cell.className='cell';
+        cell.style.background='transparent';
+        attachCellListeners(cell);
+        boardEl.appendChild(cell);
+        grid.push({r,c,el:cell,star:null});
+      }
+    }
+  }
+
+  function attachCellListeners(cell){
+    cell.addEventListener('pointerdown',cellPointerDown);
+    cell.addEventListener('touchstart',e=>e.preventDefault(),{passive:false});
+  }
+
+  function cellPointerDown(e){
+    if(animating) return;
+    const el = e.currentTarget;
+    const r = +el.dataset.r, c = +el.dataset.c;
+    const idx = r*cols + c;
+    if(!selected){
+      selectCell(idx);
+    } else {
+      const other = selected;
+      const or = other.r, oc = other.c;
+      const dist = Math.abs(or - r) + Math.abs(oc - c);
+      if(dist===1){
+        swapCells(other.idx, idx, true);
+      } else {
+        selectCell(idx);
+      }
+    }
+  }
+
+  function selectCell(idx){
+    clearSelection();
+    selected = {...grid[idx], idx};
+    grid[idx].el.style.boxShadow='0 6px 18px rgba(255,255,255,0.06)';
+  }
+
+  function clearSelection(){
+    if(selected){selected.el.style.boxShadow=''; selected=null}
+  }
+
+  // Initialize stars randomly avoiding immediate matches
+  function initStars(){
+    // fill grid bottom-up
+    for(let i=0;i<grid.length;i++) grid[i].star=null;
+    // simple fill
+    for(let r=0;r<rows;r++){
+      for(let c=0;c<cols;c++){
+        const idx = r*cols + c;
+        placeRandomStarAt(idx);
+      }
+    }
+    // remove any initial matches
+    while(true){
+      const matches = findAllMatches();
+      if(matches.length===0) break;
+      for(const m of matches){
+        for(const cellIdx of m){
+          grid[cellIdx].star = {color:randColor(), special:null};
+        }
+      }
+    }
+    renderAll();
+  }
+
+  function randColor(){return Math.floor(Math.random()*colors.length)}
+
+  function placeRandomStarAt(idx){
+    grid[idx].star = {color:randColor(), special:null};
+  }
+
+  function renderAll(){
+    for(const g of grid) renderCell(g);
+  }
+
+  function renderCell(g){
+    const el = g.el;
+    el.innerHTML = '';
+    if(g.star){
+      const s = document.createElement('div');
+      s.style.width='44px'; s.style.height='44px'; s.style.borderRadius='6px';
+      s.style.display='flex'; s.style.alignItems='center'; s.style.justifyContent='center';
+      s.style.background = `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.18), ${colors[g.star.color]})`;
+      s.style.boxShadow = 'inset 0 -6px 14px rgba(0,0,0,0.25)';
+      s.style.transition='transform 200ms ease';
+      if(g.star.special==='shoot'){
+        s.style.border='2px solid rgba(255,255,255,0.12)'; s.innerHTML='✦'; s.style.fontSize='18px';
+      }
+      el.appendChild(s);
+    }
+  }
+
+  // Swap two cells; if animate true check matches else revert
+  function swapCells(aIdx,bIdx,checkMatches){
+    if(animating) return;
+    animating = true;
+    const a = grid[aIdx], b = grid[bIdx];
+    // swap data
+    const tmp = a.star; a.star = b.star; b.star = tmp;
+    renderCell(a); renderCell(b);
+    // small pop animation
+    [a.el.firstChild,b.el.firstChild].forEach(node=>{if(node)node.style.transform='scale(1.08)';});
+    setTimeout(()=>{[a.el.firstChild,b.el.firstChild].forEach(node=>{if(node)node.style.transform='';});
+      if(checkMatches){
+        const matches = findAllMatches();
+        if(matches.length>0){
+          handleMatches(matches);
+        } else {
+          // revert swap
+          const tmp2 = a.star; a.star = b.star; b.star = tmp2; renderCell(a); renderCell(b); animating=false; clearSelection();
+        }
+      } else { animating=false; clearSelection(); }
+    },200);
+  }
+
+  // Find all matches (returns arrays of indices that form matches)
+  function findAllMatches(){
+    const matched = [];
+    const seen = new Set();
+    // horizontal
+    for(let r=0;r<rows;r++){
+      let run=[];
+      for(let c=0;c<cols;c++){
+        const idx=r*cols+c; const s = grid[idx].star;
+        if(s){
+          if(run.length===0 || grid[run[0]].star.color===s.color){ run.push(idx); }
+          else { if(run.length>=3) run.forEach(i=>seen.add(i)); run=[idx]; }
+        } else { if(run.length>=3) run.forEach(i=>seen.add(i)); run=[]; }
+      }
+      if(run.length>=3) run.forEach(i=>seen.add(i));
+    }
+    // vertical
+    for(let c=0;c<cols;c++){
+      let run=[];
+      for(let r=0;r<rows;r++){
+        const idx=r*cols+c; const s = grid[idx].star;
+        if(s){
+          if(run.length===0 || grid[run[0]].star.color===s.color){ run.push(idx); }
+          else { if(run.length>=3) run.forEach(i=>seen.add(i)); run=[idx]; }
+        } else { if(run.length>=3) run.forEach(i=>seen.add(i)); run=[]; }
+      }
+      if(run.length>=3) run.forEach(i=>seen.add(i));
+    }
+    // convert set to grouped arrays by contiguous groups (simple)
+    if(seen.size===0) return [];
+    const arr = Array.from(seen).sort((a,b)=>a-b);
+    const groups = [];
+    let group=[arr[0]];
+    for(let i=1;i<arr.length;i++){
+      if(arr[i]===arr[i-1]+1 || arr[i]===arr[i-1]+cols) group.push(arr[i]);
+      else { groups.push(group); group=[arr[i]]; }
+    }
+    groups.push(group);
+    return groups;
+  }
+
+  function handleMatches(matchGroups){
+    // award score and create specials for larger matches
+    for(const g of matchGroups){
+      score += g.length * 10;
+      // if length >=5 create a shooting star at the first cell
+      if(g.length>=5){
+        const idx = g[Math.floor(g.length/2)];
+        grid[idx].star = {color:grid[idx].star.color, special:'shoot'};
+      } else {
+        for(const idx of g){ grid[idx].star = null; }
+      }
+    }
+    updateUI();
+    renderAll();
+    // after short delay trigger gravity
+    setTimeout(()=>{applyGravity();},220);
+  }
+
+  function applyGravity(){
+    let moved=false;
+    for(let c=0;c<cols;c++){
+      for(let r=rows-1;r>=0;r--){
+        const idx=r*cols+c;
+        if(!grid[idx].star){
+          // find above
+          for(let k=r-1;k>=0;k--){
+            const aboveIdx=k*cols+c;
+            if(grid[aboveIdx].star){ grid[idx].star = grid[aboveIdx].star; grid[aboveIdx].star = null; moved=true; break; }
+          }
+        }
+      }
+    }
+    renderAll();
+    if(moved){
+      setTimeout(()=>{
+        // after gravity, check for new matches
+        const matches = findAllMatches();
+        if(matches.length>0) handleMatches(matches); else { animating=false; clearSelection(); }
+      },220);
+    } else { // no move -> refill top
+      refillTop();
+      setTimeout(()=>{ const matches=findAllMatches(); if(matches.length>0) handleMatches(matches); else { animating=false; clearSelection(); } },200);
+    }
+  }
+
+  function refillTop(){
+    for(let c=0;c<cols;c++){
+      for(let r=0;r<rows;r++){
+        const idx=r*cols+c; if(!grid[idx].star){ grid[idx].star = {color:randColor(), special:null}; }
+      }
+    }
+    renderAll();
+  }
+
+  function updateUI(){
+    document.getElementById('score').textContent = score;
+    document.getElementById('level').textContent = level;
+  }
+
+  // Game lifecycle
+  function newGame(){ score=0; level=1; buildBoard(); initStars(); updateUI(); }
+
+  // Handlers for UI
+  document.getElementById('startBtn').addEventListener('click',()=>{ document.getElementById('startOverlay').style.display='none'; newGame(); });
+  document.getElementById('newGame').addEventListener('click',()=>{ newGame(); });
+  document.getElementById('pauseBtn').addEventListener('click',()=>{ document.getElementById('pauseOverlay').style.display='flex'; });
+  document.getElementById('resume').addEventListener('click',()=>{ document.getElementById('pauseOverlay').style.display='none'; });
+  document.getElementById('mute').addEventListener('click',()=>{ /* placeholder for audio toggle */ alert('Audio toggle placeholder — add audio assets for full experience.'); });
+  document.getElementById('fullscreen').addEventListener('click',()=>{ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); });
+
+  // Click-to-swap alternative: support tap-select then tap neighbor already implemented.
+  // Touch swipe to swap: implement basic drag detection
+  let dragStart = null;
+  boardEl.addEventListener('pointerdown', e=>{ if(e.target===boardEl) return; boardEl.setPointerCapture(e.pointerId); const cell = e.target.closest('.cell'); if(!cell) return; dragStart = {r:+cell.dataset.r,c:+cell.dataset.c, idx:+cell.dataset.r*cols + +cell.dataset.c}; });
+  boardEl.addEventListener('pointerup', e=>{
+    try{ boardEl.releasePointerCapture(e.pointerId);}catch(_){}
+    if(!dragStart) return; const cell = e.target.closest('.cell'); if(!cell) { dragStart=null; return; }
+    const r = +cell.dataset.r, c=+cell.dataset.c; const idx = r*cols + c;
+    const dist = Math.abs(dragStart.r - r) + Math.abs(dragStart.c - c);
+    if(dist===1){ swapCells(dragStart.idx, idx, true); }
+    dragStart=null;
+  });
+
+  // Keyboard shortcuts for testing
+  window.addEventListener('keydown',e=>{
+    if(e.key==='r'){ newGame(); }
+    if(e.key==='p'){ document.getElementById('pauseOverlay').style.display='flex'; }
+  });
+
+  // Init
+  buildBoard();
+  updateUI();
+  // ready state — show start overlay (already visible)
+})();
+</script>
+</body>
+</html>
