@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>004 - Paint Roll Puzzle</title>
+<style>
+  body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#f7fbff}
+  .wrap{width:760px;max-width:96%;background:#fff;padding:18px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.08)}
+  #board{background:#eef7ff;border-radius:8px;padding:12px;display:flex;justify-content:center}
+  canvas{background:#cfeeff;border-radius:6px}
+  .info{display:flex;justify-content:space-between;margin-top:12px}
+  button{padding:8px 12px;border-radius:8px;border:0;background:#1e90ff;color:#fff}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h2>004 - Paint Roll Puzzle</h2>
+    <p>Roll the paint ball so it covers every tile exactly once. Use arrow keys or swipe to roll — the ball continues until it hits a wall.</p>
+    <div id="board"><canvas id="c" width="560" height="560"></canvas></div>
+    <div class="info"><div>Moves: <span id="moves">0</span></div><div><button id="reset">Reset</button></div></div>
+  </div>
+<script>
+const canvas=document.getElementById('c');const ctx=canvas.getContext('2d');
+const rows=7,cols=7;const size=canvas.width/cols;let grid=[],ball={x:0,y:0},moves=0;
+function init(){grid=[];for(let y=0;y<rows;y++){let r=[];for(let x=0;x<cols;x++){r.push({painted:false,block:false});}grid.push(r);} // create some walls for interest
+for(let i=0;i<8;i++){const wx=Math.floor(Math.random()*cols), wy=Math.floor(Math.random()*rows); if(wx===0&&wy===0) continue; grid[wy][wx].block=Math.random()<0.15}
+ball={x:0,y:0};grid[0][0].painted=true;moves=0;draw();document.getElementById('moves').textContent=moves}
+function draw(){ctx.clearRect(0,0,canvas.width,canvas.height);for(let y=0;y<rows;y++){for(let x=0;x<cols;x++){const cell=grid[y][x];const px=x*size,py=y*size;ctx.fillStyle= cell.block? '#333' : (cell.painted? '#ffdca8' : '#ffffff'); ctx.fillRect(px,py,size-2,size-2); ctx.strokeStyle='#ddd'; ctx.strokeRect(px,py,size-2,size-2);}} // ball
+ctx.beginPath();ctx.fillStyle='#ff6b6b';ctx.arc((ball.x+0.5)*size,(ball.y+0.5)*size,size*0.35,0,Math.PI*2);ctx.fill();}
+function canMove(x,y){return x>=0&&y>=0&&x<cols&&y<rows&&!grid[y][x].block}
+function roll(dx,dy){ // ball keeps moving until next cell is blocked or edge
+let nx=ball.x+dx, ny=ball.y+dy; if(!canMove(nx,ny)) return; // blocked immediate
+while(canMove(nx,ny)){ball.x=nx;ball.y=ny; grid[ny][nx].painted=!grid[ny][nx].painted; nx+=dx; ny+=dy;} moves++; document.getElementById('moves').textContent=moves; draw(); checkWin();}
+function checkWin(){let all=true;for(let y=0;y<rows;y++)for(let x=0;x<cols;x++){if(!grid[y][x].block && !grid[y][x].painted) all=false;} if(all){setTimeout(()=>{alert('Well done — all tiles painted in '+moves+' moves!');},100)} }
+window.addEventListener('keydown',e=>{if(e.key==='ArrowUp')roll(0,-1); if(e.key==='ArrowDown')roll(0,1); if(e.key==='ArrowLeft')roll(-1,0); if(e.key==='ArrowRight')roll(1,0);});
+// touch swipe
+let start=null;canvas.addEventListener('touchstart',e=>{start=e.touches[0];});canvas.addEventListener('touchend',e=>{if(!start) return; const end=e.changedTouches[0]; const dx=end.clientX-start.clientX, dy=end.clientY-start.clientY; if(Math.abs(dx)>Math.abs(dy)){ if(dx>20) roll(1,0); else if(dx<-20) roll(-1,0);} else { if(dy>20) roll(0,1); else if(dy<-20) roll(0,-1);} start=null;});
+document.getElementById('reset').addEventListener('click',init);
+init();
+</script>
+</body>
+</html>
