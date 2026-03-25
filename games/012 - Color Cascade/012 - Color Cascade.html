@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>012 - Color Cascade</title>
+<style>
+:root{--bg:#f7fbff;--panel:#ffffff;--accent:#ff6b6b;--muted:#4a6b7a}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#f7fbff,#eaf6ff);color:#082029}
+.app{display:flex;flex-direction:column;align-items:center;padding:18px}
+.header{width:100%;max-width:1200px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.title{font-weight:800;font-size:18px}
+.controls{display:flex;gap:8px}
+.btn{background:var(--panel);border:1px solid rgba(0,0,0,0.06);padding:8px 12px;border-radius:10px;color:var(--muted);cursor:pointer}
+.container{width:100%;max-width:1200px;display:flex;gap:16px}
+.left{flex:1}
+.stage{background:linear-gradient(180deg,#ffffff,#f1fbff);padding:12px;border-radius:12px;border:1px solid rgba(0,0,0,0.04)}
+.canvas-wrap{border-radius:8px;overflow:hidden}
+#gameCanvas{display:block;width:100%;height:540px;background:linear-gradient(180deg,#dff1ff,#eaf9ff)}
+.right{width:320px;background:linear-gradient(180deg,#ffffff,#fbfffe);border-radius:12px;padding:12px;border:1px solid rgba(0,0,0,0.04)}
+.panel{background:transparent;padding:8px;border-radius:8px;margin-bottom:12px}
+.palette{display:flex;gap:8px;flex-wrap:wrap}
+.swatch{width:44px;height:44px;border-radius:8px;border:1px solid rgba(0,0,0,0.06);cursor:pointer}
+.target-preview{width:100%;height:120px;border-radius:10px;border:1px solid rgba(0,0,0,0.06);display:flex;align-items:center;justify-content:center;font-weight:700}
+.stat{font-size:13px;color:var(--muted);margin-top:6px}
+.footer{font-size:12px;color:var(--muted);text-align:center;margin-top:12px}
+.instructions{font-size:13px;color:#124}
+@media(max-width:900px){.container{flex-direction:column}.right{width:100%}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="title">012 - Color Cascade</div>
+    <div class="controls">
+      <button class="btn" id="undo">Undo</button>
+      <button class="btn" id="restart">Restart</button>
+    </div>
+  </div>
+  <div class="container">
+    <div class="left">
+      <div class="stage">
+        <div class="canvas-wrap"><canvas id="gameCanvas" width="900" height="540"></canvas></div>
+        <div style="margin-top:10px;display:flex;gap:12px;align-items:center">
+          <div class="stat">Level: <span id="level">1</span></div>
+          <div class="stat">Score: <span id="score">0</span></div>
+          <div class="stat">Attempts: <span id="attempts">0</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="right">
+      <div class="panel">
+        <div style="font-weight:700">Target Color</div>
+        <div id="targetPreview" class="target-preview">#FFFFFF</div>
+      </div>
+      <div class="panel">
+        <div style="font-weight:700">Palette</div>
+        <div class="palette" id="palette"></div>
+        <div class="instructions" style="margin-top:8px">Drag a bucket into a container to pour. Mix colors to match the target. Exact match within tolerance wins.</div>
+      </div>
+      <div class="panel">
+        <div style="font-weight:700">Controls</div>
+        <div class="stat">Drag buckets to pour, or click a bucket then click a container. Use Undo to revert last pour.</div>
+      </div>
+    </div>
+  </div>
+  <div class="footer">Prototype: simple color mixing physics with blend math. Add final art/FX and audio for portal submission.</div>
+</div>
+
+<script>
+// 012 - Color Cascade
+// Prototype physics-light color mixing puzzle. Drag buckets to pour into containers; mix colors to match a target color.
+
+(function(){
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const paletteEl = document.getElementById('palette');
+  const targetPreview = document.getElementById('targetPreview');
+  const levelEl = document.getElementById('level');
+  const scoreEl = document.getElementById('score');
+  const attemptsEl = document.getElementById('attempts');
+  const undoBtn = document.getElementById('undo');
+  const restartBtn = document.getElementById('restart');
+
+  let W = canvas.width, H = canvas.height;
+  const BUCKETS = [ '#ff4b4b', '#ffd166', '#5ee6b3', '#6bb6ff', '#c69bff' ];
+  const LEVELS = [ {target:'#f6c2a1', containers:3, tolerance:22}, {target:'#9be6a1', containers:3, tolerance:26}, {target:'#9bd6ff', containers:4, tolerance:30} ];
+
+  let state = {level:0,score:0,attempts:0, containers:[], history:[], dragging:null, selectedBucket:null, target:[255,255,255], tolerance:20};
+
+  function hexToRgb(hex){ const h=hex.replace('#',''); return [parseInt(h.substring(0,2),16), parseInt(h.substring(2,4),16), parseInt(h.substring(4,6),16)]; }
+  function rgbToHex(c){ return '#'+c.map(v=>Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join(''); }
+  function blendColors(colors,weights){ // colors array of [r,g,b], weights same length -> weighted average
+    if(colors.length===0) return [255,255,255];
+    const totals = [0,0,0]; let wsum=0;
+    for(let i=0;i<colors.length;i++){ const w = weights?weights[i]:1; wsum+=w; totals[0]+=colors[i][0]*w; totals[1]+=colors[i][1]*w; totals[2]+=colors[i][2]*w; }
+    return [totals[0]/wsum, totals[1]/wsum, totals[2]/wsum];
+  }
+  function colorDistance(a,b){ return Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]); }
+
+  function initLevel(n){ state.level=n; levelEl.textContent = n+1; const lv = LEVELS[n%LEVELS.length]; state.target = hexToRgb(lv.target); state.tolerance = lv.tolerance; targetPreview.style.background = lv.target; targetPreview.textContent = lv.target; state.containers = []; state.history = []; state.attempts=0; attemptsEl.textContent=0; // set up containers
+    const cols = lv.containers; const gap = 20; const totalW = cols*140 + (cols-1)*gap; const startX = (W - totalW)/2;
+    for(let i=0;i<cols;i++){ state.containers.push({x:startX + i*(140+gap), y:220, w:140, h:180, contents:[], color:[255,255,255]}); }
+    state.score = 0; scoreEl.textContent=state.score; render(); buildPalette(); }
+
+  function buildPalette(){ paletteEl.innerHTML=''; for(const col of BUCKETS){ const d=document.createElement('div'); d.className='swatch'; d.style.background=col; d.draggable=true; d.dataset.color=col; d.addEventListener('dragstart',onDragStart); d.addEventListener('click',onBucketClick); paletteEl.appendChild(d); }}
+
+  function onDragStart(e){ e.dataTransfer.setData('text/plain', e.currentTarget.dataset.color); }
+  function onBucketClick(e){ state.selectedBucket = e.currentTarget.dataset.color; // highlight
+    document.querySelectorAll('.swatch').forEach(s=>s.style.outline=''); e.currentTarget.style.outline='3px solid rgba(0,0,0,0.08)'; }
+
+  // canvas drag/drop
+  canvas.addEventListener('dragover', e=>e.preventDefault());
+  canvas.addEventListener('drop', e=>{ e.preventDefault(); const hex = e.dataTransfer.getData('text/plain'); const rect = canvas.getBoundingClientRect(); const x = e.clientX - rect.left, y = e.clientY - rect.top; pourIntoAt(x,y,hex); });
+  canvas.addEventListener('click', e=>{ if(state.selectedBucket){ const rect=canvas.getBoundingClientRect(); const x=e.clientX-rect.left, y=e.clientY-rect.top; pourIntoAt(x,y,state.selectedBucket); state.selectedBucket=null; document.querySelectorAll('.swatch').forEach(s=>s.style.outline=''); } });
+
+  function pourIntoAt(x,y,hex){ // find container under point
+    for(const c of state.containers){ if(x>c.x && x<c.x+c.w && y>c.y && y<c.y+c.h){ // pour small droplet
+        const rgb = hexToRgb(hex);
+        // weight droplet by small value
+        c.contents.push({color:rgb,vol:1});
+        c.color = blendColors(c.contents.map(d=>d.color), c.contents.map(d=>d.vol));
+        // record history for undo
+        state.history.push({type:'pour',containerIndex:state.containers.indexOf(c)});
+        state.attempts++; attemptsEl.textContent=state.attempts;
+        playPour(); checkMatch(c);
+        render(); return; } }
+  }
+
+  function playPour(){ try{ const a=new (window.AudioContext||window.webkitAudioContext)(); const o=a.createOscillator(); const g=a.createGain(); o.connect(g); g.connect(a.destination); o.frequency.value=600; g.gain.value=0.02; o.start(); setTimeout(()=>{ o.stop(); a.close(); },90); }catch(e){} }
+
+  function checkMatch(container){ const dist = colorDistance(container.color, state.target); if(dist <= state.tolerance){ // success for this container
+      state.score += 100; scoreEl.textContent = state.score; // highlight
+      // mark container as matched by filling with target color
+      container.color = state.target.slice(); container.matched=true; render(); // check level complete
+      if(state.containers.every(c=>c.matched)) levelComplete(); }
+  }
+
+  function undo(){ const last = state.history.pop(); if(!last) return; if(last.type==='pour'){ const c = state.containers[last.containerIndex]; c.contents.pop(); c.color = c.contents.length? blendColors(c.contents.map(d=>d.color), c.contents.map(d=>d.vol)) : [255,255,255]; c.matched=false; render(); } }
+
+  function levelComplete(){ setTimeout(()=>{ alert('Level complete! Score: '+state.score); initLevel((state.level+1)%LEVELS.length); },200); }
+
+  function reset(){ initLevel(state.level); }
+
+  function render(){ ctx.clearRect(0,0,W,H); // background
+    // draw containers
+    for(const c of state.containers){ // container body
+      ctx.fillStyle = '#fff'; ctx.fillRect(c.x,c.y,c.w,c.h); ctx.strokeStyle='rgba(0,0,0,0.06)'; ctx.strokeRect(c.x+0.5,c.y+0.5,c.w,c.h);
+      // inner liquid
+      ctx.fillStyle = rgbToHex(c.color); ctx.fillRect(c.x+8, c.y + c.h - 110, c.w - 16, 90);
+      // label
+      ctx.fillStyle='#123'; ctx.font='12px Inter'; ctx.fillText('Container', c.x+10, c.y+16);
+      // show contents count
+      ctx.fillStyle='#123'; ctx.font='11px Inter'; ctx.fillText('Drops: '+c.contents.length, c.x+10, c.y+34);
+      if(c.matched){ ctx.strokeStyle='rgba(0,180,80,0.6)'; ctx.lineWidth=3; ctx.strokeRect(c.x+3,c.y+3,c.w-6,c.h-6); ctx.lineWidth=1; }
+    }
+    // draw buckets palette as visual guide
+    const bx = 20, by = 20; let i=0; for(const b of BUCKETS){ ctx.fillStyle=b; ctx.fillRect(bx + i*56, by, 44, 44); ctx.strokeStyle='rgba(0,0,0,0.06)'; ctx.strokeRect(bx + i*56 +0.5, by +0.5, 44, 44); i++; }
+
+    // draw target preview
+    ctx.fillStyle = rgbToHex(state.target); ctx.fillRect(W-140,20,120,80); ctx.strokeStyle='rgba(0,0,0,0.06)'; ctx.strokeRect(W-140+0.5,20.5,120,80);
+  }
+
+  // init
+  function start(){ W = canvas.width; H = canvas.height; initLevel(0); render(); }
+  undoBtn.addEventListener('click', ()=>{ undo(); }); restartBtn.addEventListener('click', ()=>{ reset(); });
+
+  // keyboard undo
+  window.addEventListener('keydown', e=>{ if(e.ctrlKey && e.key==='z') undo(); });
+
+  start();
+})();
+</script>
+</body>
+</html>
