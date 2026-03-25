@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>011 - Traffic Flow Master</title>
+<style>
+:root{--bg:#eef6fb;--road:#2f3640;--lane:#3b4249;--accent:#ffcc00;--safe:#5cd65c}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#f7fbff,#eef6fb);color:#102027}
+.app{display:flex;flex-direction:column;align-items:center;padding:14px}
+.header{width:100%;max-width:1100px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.title{font-weight:800;font-size:18px}
+.controls{display:flex;gap:8px}
+.btn{background:#fff;border:1px solid rgba(0,0,0,0.06);padding:8px 12px;border-radius:10px;color:#102027;cursor:pointer}
+.container{width:100%;max-width:1100px;display:flex;gap:14px}
+.left{flex:1}
+.game-wrap{background:linear-gradient(180deg,#ffffff,#eef7ff);padding:12px;border-radius:12px;border:1px solid rgba(0,0,0,0.04)}
+canvas{display:block;width:100%;height:640px;border-radius:8px;background:linear-gradient(180deg,#dfeef6,#cfe8f6)}
+.right{width:320px;background:linear-gradient(180deg,#ffffff,#fbfeff);border-radius:12px;padding:12px;border:1px solid rgba(0,0,0,0.04)}
+.panel{background:transparent;padding:8px;border-radius:8px;margin-bottom:12px}
+.stat{font-size:14px;color:#4a6b73;margin-top:6px}
+.legend{display:flex;gap:8px;flex-wrap:wrap}
+.light-btn{display:flex;gap:6px;align-items:center}
+.footer{font-size:12px;color:#7c9aa0;margin-top:12px;text-align:center}
+.overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(0,0,0,0.5),rgba(0,0,0,0.6));}
+.modal{background:#fff;padding:18px;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,0.4);max-width:420px;text-align:center}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="title">011 - Traffic Flow Master</div>
+    <div class="controls">
+      <button class="btn" id="pause">Pause</button>
+      <button class="btn" id="restart">Restart</button>
+    </div>
+  </div>
+  <div class="container">
+    <div class="left">
+      <div class="game-wrap">
+        <canvas id="gameCanvas" width="960" height="640"></canvas>
+      </div>
+    </div>
+    <div class="right">
+      <div class="panel">
+        <div style="font-weight:700">Traffic Lights</div>
+        <div class="legend" style="margin-top:8px">
+          <div class="light-btn"><button class="btn" data-inter="NS" id="toggleNS">Toggle N/S</button></div>
+          <div class="light-btn"><button class="btn" data-inter="EW" id="toggleEW">Toggle E/W</button></div>
+        </div>
+        <div style="margin-top:8px" class="stat">Click a light button to manually change direction. Auto-cycle speed increases over time.</div>
+      </div>
+      <div class="panel">
+        <div style="font-weight:700">Stats</div>
+        <div class="stat">Score: <strong id="score">0</strong></div>
+        <div class="stat">Crashes: <strong id="crash">0</strong></div>
+        <div class="stat">Wave: <strong id="wave">1</strong></div>
+      </div>
+      <div class="panel">
+        <div style="font-weight:700">How to play</div>
+        <div class="stat">Control the traffic lights to avoid collisions. Prevent crashes and keep traffic flowing. As wave increases, traffic density rises.</div>
+      </div>
+    </div>
+  </div>
+  <div class="footer">Prototype: core simulation of intersection and light control. Add polished assets & audio for portal submission.</div>
+</div>
+
+<!-- Game over modal -->
+<div id="gameOver" class="overlay" style="display:none">
+  <div class="modal">
+    <div style="font-weight:800;font-size:20px">Crash!</div>
+    <div id="overText" style="margin-top:10px">Your intersection had a collision.</div>
+    <div style="margin-top:14px"><button class="btn" id="tryAgain">Try Again</button></div>
+  </div>
+</div>
+
+<script>
+// 011 - Traffic Flow Master (prototype)
+// Simple four-way intersection simulation. Cars spawn on each approach and follow lane rules.
+
+(function(){
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const crashEl = document.getElementById('crash');
+  const waveEl = document.getElementById('wave');
+  const pauseBtn = document.getElementById('pause');
+  const restartBtn = document.getElementById('restart');
+  const toggleNS = document.getElementById('toggleNS');
+  const toggleEW = document.getElementById('toggleEW');
+  const gameOverModal = document.getElementById('gameOver');
+  const tryAgainBtn = document.getElementById('tryAgain');
+
+  let W = canvas.width, H = canvas.height;
+
+  // Intersection geometry (centered)
+  const center = {x: W/2, y: H/2};
+  const laneWidth = 44; // each approach lane width
+  const roadHalf = 160; // half-length from center to spawn line
+
+  // Lights: NS (north-south) and EW (east-west). Only one direction is green at a time.
+  let lights = {mode: 'NS', // 'NS' allows north-south through
+                timer: 0, cycle: 4000}; // ms per green
+
+  let lastTick = performance.now();
+  let running = true;
+
+  // Cars array
+  let cars = [];
+  let spawnTimers = {N:0,S:0,E:0,W:0};
+  let spawnInterval = 1500; // ms base
+  let score = 0, crashes = 0, wave = 1;
+
+  // Utility
+  function rand(min,max){return Math.random()*(max-min)+min}
+
+  // Car types: basic data
+  function makeCar(dir){
+    // dir is 'N','S','E','W' spawn direction
+    const id = Date.now().toString(36) + Math.floor(Math.random()*999).toString(36);
+    // choose lane offset (for multi-lane later)
+    const speed = 0.8 + Math.random()*0.9 + wave*0.05; // px/frame base
+    // position and velocity by direction
+    let x,y,vx,vy,angle,targetLane;
+    if(dir==='N'){ x=center.x - laneWidth/2; y=center.y - roadHalf - 60; vx=0; vy=1; angle=0; }
+    if(dir==='S'){ x=center.x + laneWidth/2; y=center.y + roadHalf + 60; vx=0; vy=-1; angle=Math.PI; }
+    if(dir==='E'){ x=center.x + roadHalf + 60; y=center.y - laneWidth/2; vx=-1; vy=0; angle=Math.PI/2; }
+    if(dir==='W'){ x=center.x - roadHalf - 60; y=center.y + laneWidth/2; vx=1; vy=0; angle=-Math.PI/2; }
+    return {id,dir,x,y,vx,vy,angle,speed,waiting:false,passed:false,width:28,length:48,color:randColor()};
+  }
+  function randColor(){ const palette=['#ff6b6b','#ffd166','#6bb6ff','#6bf2b8','#c39eff']; return palette[Math.floor(Math.random()*palette.length)]; }
+
+  // spawn logic
+  function spawnWave(dt){
+    const density = Math.max(1, 6 - Math.floor(wave/3)); // fewer interval at higher wave
+    spawnInterval = Math.max(500, 1200 - wave*30);
+    ['N','S','E','W'].forEach(dir=>{
+      spawnTimers[dir]+=dt;
+      if(spawnTimers[dir] > spawnInterval* (0.8 + Math.random()*0.8)){
+        spawnTimers[dir]=0; cars.push(makeCar(dir));
+      }
+    });
+  }
+
+  // simple light toggling
+  function updateLights(dt){ lights.timer += dt; if(lights.timer>lights.cycle){ lights.timer=0; lights.mode = (lights.mode==='NS')? 'EW':'NS'; } }
+
+  // core physics
+  function updateCars(dt){
+    // dt in ms, convert to frame-scale
+    const scale = dt * 0.06; // tuning
+    for(let i=0;i<cars.length;i++){
+      const c = cars[i];
+      // if near intersection stop depending on light and blocking car
+      const distToCenter = Math.hypot(c.x - center.x, c.y - center.y);
+      const approaching = distToCenter < 120 && distToCenter > 12;
+      let green = false;
+      if(c.dir==='N' || c.dir==='S') green = (lights.mode==='NS');
+      else green = (lights.mode==='EW');
+
+      // check if there's a car right ahead to avoid collision
+      const ahead = cars.find(o=>o!==c && sameLaneAhead(c,o));
+      if(approaching && !green){ c.waiting=true; } else if(ahead && distanceAhead(c,ahead) < 56){ c.waiting=true; } else { c.waiting=false; }
+
+      if(!c.waiting){ c.x += c.vx * c.speed * scale; c.y += c.vy * c.speed * scale; }
+
+      // check passed center to increment score and mark
+      if(!c.passed && passedCenter(c)){ c.passed = true; score += 10; }
+
+      // remove cars that left bounds
+      if(Math.abs(c.x-center.x) > W*0.8 || Math.abs(c.y-center.y) > H*0.8){ cars.splice(i,1); i--; }
+    }
+  }
+
+  function sameLaneAhead(a,b){ // rudimentary: same dir and roughly same line
+    if(a.dir!==b.dir) return false; if(a.dir==='N' && Math.abs(a.x-b.x)<32 && b.y > a.y) return true; if(a.dir==='S' && Math.abs(a.x-b.x)<32 && b.y < a.y) return true; if(a.dir==='E' && Math.abs(a.y-b.y)<32 && b.x > a.x) return true; if(a.dir==='W' && Math.abs(a.y-b.y)<32 && b.x < a.x) return true; return false; }
+  function distanceAhead(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
+  function passedCenter(c){ if(c.dir==='N' && c.y>center.y) return true; if(c.dir==='S' && c.y<center.y) return true; if(c.dir==='E' && c.x<center.x) return true; if(c.dir==='W' && c.x>center.x) return true; return false; }
+
+  // collision detection between bounding boxes
+  function detectCollisions(){
+    for(let i=0;i<cars.length;i++){
+      for(let j=i+1;j<cars.length;j++){
+        const a=cars[i], b=cars[j];
+        if(rectOverlap(a,b)){ // collision
+          crashes++; crashEl.textContent = crashes; playCrash(); gameOver(); return; }
+      }
+    }
+  }
+  function rectOverlap(a,b){
+    // approximate rectangles aligned with angle ignored: use circle radius
+    const r1 = Math.max(a.width,a.length)/1.6; const r2 = Math.max(b.width,b.length)/1.6;
+    return Math.hypot(a.x-b.x,a.y-b.y) < (r1 + r2) * 0.7;
+  }
+
+  // rendering
+  function draw(){
+    // clear
+    ctx.clearRect(0,0,W,H);
+    // background meadow
+    ctx.fillStyle = '#dff2e8'; ctx.fillRect(0,0,W,H);
+
+    // draw roads (simple cross)
+    ctx.fillStyle = '--road';
+    // vertical road
+    ctx.fillStyle = '#3a3d3f'; ctx.fillRect(center.x - laneWidth, 0, laneWidth*2, H);
+    // horizontal road
+    ctx.fillRect(0, center.y - laneWidth, W, laneWidth*2);
+
+    // lane markings
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 4; ctx.setLineDash([18,12]);
+    // vertical center line
+    ctx.beginPath(); ctx.moveTo(center.x,0); ctx.lineTo(center.x,H); ctx.stroke();
+    // horizontal center
+    ctx.beginPath(); ctx.moveTo(0,center.y); ctx.lineTo(W,center.y); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // draw traffic lights near intersection corners
+    drawLights();
+
+    // draw cars
+    for(const c of cars){ drawCar(c); }
+
+    // HUD small
+    ctx.fillStyle='rgba(0,0,0,0.06)'; ctx.fillRect(12,12,140,46);
+    ctx.fillStyle='#fff'; ctx.font='13px Inter'; ctx.fillText('Traffic Flow Master (proto)',18,30);
+  }
+
+  function drawCar(c){ ctx.save(); ctx.translate(c.x,c.y); ctx.rotate(c.angle); // body
+    ctx.fillStyle = c.color; ctx.fillRect(-c.length/2, -c.width/2, c.length, c.width);
+    // windows
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.fillRect(-c.length/6, -c.width/4, c.length/3, c.width/2);
+    // brake light if waiting
+    if(c.waiting){ ctx.fillStyle='red'; ctx.fillRect(c.length/2 -6, -c.width/4, 6, c.width/2); }
+    ctx.restore(); }
+
+  function drawLights(){
+    // NS lights (north side top) - show a small panel
+    // We'll draw four lights: north, south, east, west
+    const size=16; const pad=12;
+    // North
+    drawSingleLight(center.x - roadHalf - 30, center.y - roadHalf - 30, (lights.mode==='NS'));
+    // South
+    drawSingleLight(center.x + roadHalf + 10, center.y + roadHalf + 10, (lights.mode==='NS'));
+    // East
+    drawSingleLight(center.x + roadHalf + 10, center.y - roadHalf - 30, (lights.mode==='EW'));
+    // West
+    drawSingleLight(center.x - roadHalf - 30, center.y + roadHalf + 10, (lights.mode==='EW'));
+  }
+
+  function drawSingleLight(x,y,isGreen){ ctx.fillStyle = isGreen? '#2ecc71' : '#e74c3c'; ctx.beginPath(); ctx.arc(x,y,10,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='rgba(0,0,0,0.06)'; ctx.stroke(); }
+
+  function gameOver(){ running=false; gameOverModal.style.display='flex'; }
+
+  // small sound for crash/play
+  function playCrash(){ try{ const o=new AudioContext(); const s=o.createOscillator(); const g=o.createGain(); s.connect(g); g.connect(o.destination); s.frequency.value=120; s.type='sawtooth'; g.gain.value=0.03; s.start(); setTimeout(()=>{ s.stop(); o.close(); },200); }catch(e){} }
+
+  // main loop
+  function loop(now){
+    const dt = now - lastTick; lastTick = now; if(running){ updateLights(dt); spawnWave(dt); updateCars(dt); detectCollisions(); }
+    draw(); scoreEl.textContent = score; waveEl.textContent = wave;
+    requestAnimationFrame(loop);
+  }
+
+  // simple collision auto-increment of wave difficulty
+  setInterval(()=>{ if(running){ wave++; waveEl.textContent = wave; spawnInterval = Math.max(600, spawnInterval - 20); lights.cycle = Math.max(2000, lights.cycle - 40); } }, 20000);
+
+  // Controls
+  pauseBtn.addEventListener('click', ()=>{ running = !running; pauseBtn.textContent = running? 'Pause':'Resume'; if(running) { lastTick = performance.now(); requestAnimationFrame(loop); } });
+  restartBtn.addEventListener('click', ()=>{ reset(); });
+  toggleNS.addEventListener('click', ()=>{ lights.mode = 'NS'; lights.timer = 0; });
+  toggleEW.addEventListener('click', ()=>{ lights.mode = 'EW'; lights.timer = 0; });
+  tryAgainBtn.addEventListener('click', ()=>{ gameOverModal.style.display='none'; reset(); running=true; lastTick = performance.now(); requestAnimationFrame(loop); });
+
+  // reset state
+  function reset(){ cars = []; spawnTimers={N:0,S:0,E:0,W:0}; score=0; crashes=0; wave=1; spawnInterval=1500; lights = {mode:'NS',timer:0,cycle:4000}; scoreEl.textContent=0; crashEl.textContent=0; waveEl.textContent=1; running=true; }
+
+  // helpers for car ahead detection
+  function distanceBetween(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
+
+  // Start
+  reset(); lastTick = performance.now(); requestAnimationFrame(loop);
+
+  // resize handling (canvas scaling)
+  function resize(){ const parent = canvas.parentElement.getBoundingClientRect(); const ratio = devicePixelRatio || 1; canvas.width = Math.floor(parent.width * 1.0); canvas.height = 640; W = canvas.width; H = canvas.height; center.x = W/2; center.y = H/2; }
+  window.addEventListener('resize', ()=>{ resize(); }); resize();
+
+})();
+</script>
+</body>
+</html>
