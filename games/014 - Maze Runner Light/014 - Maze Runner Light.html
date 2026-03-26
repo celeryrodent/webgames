@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Maze Runner Light</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Crimson+Text:wght@400;600&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+        
+        :root {
+            --dark-bg: #0a0a12;
+            --lantern-orange: #ff6b35;
+            --lantern-glow: #ffa500;
+            --lantern-yellow: #ffdd44;
+            --wall-color: #1a1a2e;
+            --path-color: #16213e;
+            --exit-color: #00ff88;
+            --danger-red: #ff3366;
+            --gold: #ffd700;
+        }
+        
+        body {
+            font-family: 'Crimson Text', serif;
+            background: var(--dark-bg);
+            color: #e8e8e8;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        #header {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(to bottom, rgba(10,10,18,0.95), transparent);
+            z-index: 100;
+        }
+        
+        #title {
+            font-family: 'Cinzel', serif;
+            font-size: 1.4rem;
+            color: var(--lantern-orange);
+            text-shadow: 0 0 20px var(--lantern-glow), 0 0 40px var(--lantern-orange);
+            letter-spacing: 2px;
+        }
+        
+        #stats {
+            display: flex;
+            gap: 20px;
+            font-size: 1rem;
+        }
+        
+        .stat {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .stat-label {
+            color: #888;
+        }
+        
+        .stat-value {
+            color: var(--lantern-yellow);
+            font-weight: 600;
+        }
+        
+        #fuel-bar {
+            width: 120px;
+            height: 12px;
+            background: #222;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid #444;
+        }
+        
+        #fuel-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--danger-red), var(--lantern-orange), var(--lantern-yellow));
+            transition: width 0.3s ease;
+            border-radius: 6px;
+        }
+        
+        #game-canvas {
+            flex: 1;
+            width: 100%;
+            max-width: 600px;
+        }
+        
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            z-index: 100;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            font-family: 'Cinzel', serif;
+            font-size: 0.9rem;
+            border: 2px solid var(--lantern-orange);
+            background: rgba(255,107,53,0.15);
+            color: var(--lantern-orange);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .btn:hover {
+            background: rgba(255,107,53,0.35);
+            box-shadow: 0 0 20px var(--lantern-orange);
+        }
+        
+        .btn:active {
+            transform: scale(0.95);
+        }
+        
+        #menu-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(10,10,18,0.97);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            gap: 30px;
+        }
+        
+        #menu-overlay.hidden {
+            display: none;
+        }
+        
+        #menu-title {
+            font-family: 'Cinzel', serif;
+            font-size: 2.5rem;
+            color: var(--lantern-orange);
+            text-shadow: 0 0 30px var(--lantern-glow), 0 0 60px var(--lantern-orange);
+            text-align: center;
+        }
+        
+        #menu-subtitle {
+            font-size: 1.1rem;
+            color: #aaa;
+            text-align: center;
+            max-width: 400px;
+            line-height: 1.6;
+        }
+        
+        .menu-btn {
+            padding: 18px 40px;
+            font-size: 1.1rem;
+        }
+        
+        .mode-select {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .mode-btn {
+            padding: 15px 25px;
+            font-size: 1rem;
+            min-width: 140px;
+        }
+        
+        .mode-btn.selected {
+            background: var(--lantern-orange);
+            color: var(--dark-bg);
+        }
+        
+        #game-over {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(10,10,18,0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            gap: 25px;
+        }
+        
+        #game-over.hidden {
+            display: none;
+        }
+        
+        #game-over h2 {
+            font-family: 'Cinzel', serif;
+            font-size: 2.2rem;
+            color: var(--danger-red);
+            text-shadow: 0 0 20px var(--danger-red);
+        }
+        
+        #game-over.win h2 {
+            color: var(--exit-color);
+            text-shadow: 0 0 20px var(--exit-color);
+        }
+        
+        #final-score {
+            font-size: 1.3rem;
+            color: var(--lantern-yellow);
+        }
+        
+        #touch-controls {
+            position: absolute;
+            bottom: 80px;
+            right: 20px;
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 100;
+        }
+        
+        .touch-row {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+        }
+        
+        .touch-btn {
+            width: 60px;
+            height: 60px;
+            background: rgba(255,107,53,0.25);
+            border: 2px solid var(--lantern-orange);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: var(--lantern-orange);
+        }
+        
+        @media (max-width: 768px) {
+            #touch-controls {
+                display: flex;
+            }
+            
+            #controls {
+                display: none;
+            }
+            
+            #header {
+                flex-direction: column;
+                gap: 10px;
+                padding: 10px;
+            }
+            
+            #title {
+                font-size: 1.1rem;
+            }
+            
+            #stats {
+                font-size: 0.85rem;
+                gap: 12px;
+            }
+        }
+        
+        .particles {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 50;
+        }
+        
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: var(--lantern-yellow);
+            border-radius: 50%;
+            opacity: 0;
+            animation: particle-float 2s ease-out forwards;
+        }
+        
+        @keyframes particle-float {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-50px) scale(0); }
+        }
+        
+        .shake {
+            animation: shake 0.5s ease-in-out;
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="header">
+            <div id="title">Maze Runner Light</div>
+            <div id="stats">
+                <div class="stat">
+                    <span class="stat-label">Level</span>
+                    <span class="stat-value" id="level-num">1</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Fuel</span>
+                    <div id="fuel-bar">
+                        <div id="fuel-fill" style="width: 100%"></div>
+                    </div>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Score</span>
+                    <span class="stat-value" id="score-num">0</span>
+                </div>
+            </div>
+        </div>
+        
+        <canvas id="game-canvas"></canvas>
+        
+        <div id="controls">
+            <button class="btn" id="btn-pause">Pause</button>
+            <button class="btn" id="btn-restart">Restart</button>
+        </div>
+        
+        <div id="touch-controls">
+            <div class="touch-row">
+                <div class="touch-btn" id="touch-up">↑</div>
+            </div>
+            <div class="touch-row">
+                <div class="touch-btn" id="touch-left">←</div>
+                <div class="touch-btn" id="touch-down">↓</div>
+                <div class="touch-btn" id="touch-right">→</div>
+            </div>
+        </div>
+        
+        <div id="menu-overlay">
+            <div id="menu-title">Maze Runner Light</div>
+            <div id="menu-subtitle">
+                Navigate through dark mazes with your lantern.<br>
+                Find the exit before your light fades away.<br>
+                Collect fuel orbs to survive!
+            </div>
+            <div class="mode-select">
+                <button class="btn mode-btn selected" data-mode="adventure">Adventure</button>
+                <button class="btn mode-btn" data-mode="endless">Endless</button>
+                <button class="btn mode-btn" data-mode="timeattack">Time Attack</button>
+            </div>
+            <button class="btn menu-btn" id="btn-start">Start Game</button>
+        </div>
+        
+        <div id="game-over" class="hidden">
+            <h2 id="game-over-title">Darkness Fell!</h2>
+            <div id="final-score">Score: 0</div>
+            <button class="btn menu-btn" id="btn-menu">Main Menu</button>
+            <button class="btn menu-btn" id="btn-retry">Try Again</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Game state
+        let gameState = {
+            mode: 'adventure',
+            playing: false,
+            paused: false,
+            level: 1,
+            score: 0,
+            fuel: 100,
+            maxFuel: 100,
+            player: { x: 0, y: 0 },
+            maze: [],
+            exit: { x: 0, y: 0 },
+            fuelOrbs: [],
+            keys: [],
+            keyCount: 0,
+            timeElapsed: 0,
+            lastTime: 0
+        };
+        
+        // Maze generation
+        const cellSize = 28;
+        let cols, rows;
+        
+        function resizeCanvas() {
+            const container = document.getElementById('game-container');
+            const maxWidth = Math.min(600, window.innerWidth - 20);
+            canvas.width = maxWidth;
+            canvas.height = window.innerHeight - 100;
+            cols = Math.floor(canvas.width / cellSize);
+            rows = Math.floor(canvas.height / cellSize);
+        }
+        
+        function generateMaze(level) {
+            const mazeCols = Math.min(15, 8 + Math.floor(level / 2));
+            const mazeRows = Math.min(15, 6 + Math.floor(level / 3));
+            
+            // Initialize maze with walls
+            const maze = [];
+            for (let y = 0; y < mazeRows; y++) {
+                maze[y] = [];
+                for (let x = 0; x < mazeCols; x++) {
+                    maze[y][x] = 1; // 1 = wall, 0 = path
+                }
+            }
+            
+            // Recursive backtracker for maze generation
+            const stack = [];
+            const startX = 1;
+            const startY = 1;
+            maze[startY][startX] = 0;
+            stack.push({ x: startX, y: startY });
+            
+            const directions = [
+                { dx: 0, dy: -2 }, // up
+                { dx: 2, dy: 0 },  // right
+                { dx: 0, dy: 2 },  // down
+                { dx: -2, dy: 0 }  // left
+            ];
+            
+            while (stack.length > 0) {
+                const current = stack[stack.length - 1];
+                const neighbors = [];
+                
+                for (const dir of directions) {
+                    const nx = current.x + dir.dx;
+                    const ny = current.y + dir.dy;
+                    if (nx > 0 && nx < mazeCols - 1 && ny > 0 && ny < mazeRows - 1 && maze[ny][nx] === 1) {
+                        neighbors.push({ x: nx, y: ny, dx: dir.dx, dy: dir.dy });
+                    }
+                }
+                
+                if (neighbors.length > 0) {
+                    const next = neighbors[Math.floor(Math.random() * neighbors.length)];
+                    // Carve path
+                    maze[current.y + next.dy / 2][current.x + next.dx / 2] = 0;
+                    maze[next.y][next.x] = 0;
+                    stack.push({ x: next.x, y: next.y });
+                } else {
+                    stack.pop();
+                }
+            }
+            
+            // Add some randomness - remove some walls for variety
+            for (let i = 0; i < level + 5; i++) {
+                const rx = 1 + Math.floor(Math.random() * (mazeCols - 2));
+                const ry = 1 + Math.floor(Math.random() * (mazeRows - 2));
+                if (maze[ry][rx] === 1) {
+                    // Check if removing creates a valid path
+                    let paths = 0;
+                    if (maze[ry-1] && maze[ry-1][rx] === 0) paths++;
+                    if (maze[ry+1] && maze[ry+1][rx] === 0) paths++;
+                    if (maze[ry][rx-1] === 0) paths++;
+                    if (maze[ry][rx+1] === 0) paths++;
+                    if (paths >= 2) maze[ry][rx] = 0;
+                }
+            }
+            
+            return { maze, cols: mazeCols, rows: mazeRows };
+        }
+        
+        function placePlayerAndExit(mazeData) {
+            const { maze, cols, rows } = mazeData;
+            
+            // Find valid start position (top-left area)
+            let startX = 1, startY = 1;
+            for (let y = 1; y < rows - 1; y++) {
+                for (let x = 1; x < cols - 1; x++) {
+                    if (maze[y][x] === 0) {
+                        startX = x;
+                        startY = y;
+                        break;
+                    }
+                }
+                if (maze[startY][startX] === 0) break;
+            }
+            
+            // Find valid exit (far from start)
+            let exitX = cols - 2, exitY = rows - 2;
+            for (let y = rows - 2; y > 0; y--) {
+                for (let x = cols - 2; x > 0; x--) {
+                    if (maze[y][x] === 0) {
+                        exitX = x;
+                        exitY = y;
+                        break;
+                    }
+                }
+                if (maze[exitY][exitX] === 0) break;
+            }
+            
+            return {
+                player: { x: startX, y: startY },
+                exit: { x: exitX, y: exitY }
+            };
+        }
+        
+        function spawnFuelOrbs(mazeData, count) {
+            const { maze, cols, rows } = mazeData;
+            const orbs = [];
+            
+            for (let i = 0; i < count; i++) {
+                let placed = false;
+                while (!placed) {
+                    const x = 1 + Math.floor(Math.random() * (cols - 2));
+                    const y = 1 + Math.floor(Math.random() * (rows - 2));
+                    if (maze[y][x] === 0 && 
+                        !(x === gameState.player.x && y === gameState.player.y) &&
+                        !(x === gameState.exit.x && y === gameState.exit.y)) {
+                        orbs.push({ x, y, collected: false });
+                        placed = true;
+                    }
+                }
+            }
+            
+            return orbs;
+        }
+        
+        function initLevel() {
+            const mazeData = generateMaze(gameState.level);
+            gameState.maze = mazeData.maze;
+            
+            const positions = placePlayerAndExit(mazeData);
+            gameState.player = { ...positions.player };
+            gameState.exit = { ...positions.exit };
+            
+            // Spawn fuel orbs based on difficulty
+            const orbCount = 3 + Math.floor(gameState.level / 2);
+            gameState.fuelOrbs = spawnFuelOrbs(mazeData, orbCount);
+            
+            // Reset fuel for new level
+            gameState.fuel = gameState.maxFuel;
+            
+            updateUI();
+        }
+        
+        function updateUI() {
+            document.getElementById('level-num').textContent = gameState.level;
+            document.getElementById('score-num').textContent = gameState.score;
+            document.getElementById('fuel-fill').style.width = gameState.fuel + '%';
+        }
+        
+        // Drawing functions
+        function draw() {
+            ctx.fillStyle = '#0a0a12';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            if (!gameState.maze.length) return;
+            
+            // Calculate offset to center maze
+            const mazeWidth = gameState.maze[0].length * cellSize;
+            const mazeHeight = gameState.maze.length * cellSize;
+            const offsetX = (canvas.width - mazeWidth) / 2;
+            const offsetY = (canvas.height - mazeHeight) / 2;
+            
+            // Draw maze
+            for (let y = 0; y < gameState.maze.length; y++) {
+                for (let x = 0; x < gameState.maze[y].length; x++) {
+                    const px = offsetX + x * cellSize;
+                    const py = offsetY + y * cellSize;
+                    
+                    if (gameState.maze[y][x] === 1) {
+                        // Wall
+                        const gradient = ctx.createLinearGradient(px, py, px + cellSize, py + cellSize);
+                        gradient.addColorStop(0, '#1a1a2e');
+                        gradient.addColorStop(1, '#0f0f1a');
+                        ctx.fillStyle = gradient;
+                        ctx.fillRect(px, py, cellSize, cellSize);
+                        
+                        // Wall edge highlight
+                        ctx.strokeStyle = '#2a2a4e';
+                        ctx.lineWidth = 1;
+                        ctx.strokeRect(px + 0.5, py + 0.5, cellSize - 1, cellSize - 1);
+                    } else {
+                        // Path
+                        ctx.fillStyle = '#16213e';
+                        ctx.fillRect(px, py, cellSize, cellSize);
+                    }
+                }
+            }
+            
+            // Draw exit with glow
+            const exitGlow = ctx.createRadialGradient(
+                offsetX + gameState.exit.x * cellSize + cellSize/2,
+                offsetY + gameState.exit.y * cellSize + cellSize/2,
+                0,
+                offsetX + gameState.exit.x * cellSize + cellSize/2,
+                offsetY + gameState.exit.y * cellSize + cellSize/2,
+                cellSize * 1.5
+            );
+            exitGlow.addColorStop(0, 'rgba(0, 255, 136, 0.8)');
+            exitGlow.addColorStop(1, 'rgba(0, 255, 136, 0)');
+            ctx.fillStyle = exitGlow;
+            ctx.fillRect(
+                offsetX + gameState.exit.x * cellSize - cellSize/2,
+                offsetY + gameState.exit.y * cellSize - cellSize/2,
+                cellSize * 2,
+                cellSize * 2
+            );
+            
+            ctx.fillStyle = '#00ff88';
+            ctx.beginPath();
+            ctx.arc(
+                offsetX + gameState.exit.x * cellSize + cellSize/2,
+                offsetY + gameState.exit.y * cellSize + cellSize/2,
+                cellSize/3,
+                0, Math.PI * 2
+            );
+            ctx.fill();
+            
+            // Draw fuel orbs
+            gameState.fuelOrbs.forEach(orb => {
+                if (orb.collected) return;
+                
+                const orbX = offsetX + orb.x * cellSize + cellSize/2;
+                const orbY = offsetY + orb.y * cellSize + cellSize/2;
+                
+                // Glow
+                const orbGlow = ctx.createRadialGradient(orbX, orbY, 0, orbX, orbY, cellSize);
+                orbGlow.addColorStop(0, 'rgba(255, 170, 0, 0.9)');
+                orbGlow.addColorStop(1, 'rgba(255, 170, 0, 0)');
+                ctx.fillStyle = orbGlow;
+                ctx.beginPath();
+                ctx.arc(orbX, orbY, cellSize, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Orb core
+                ctx.fillStyle = '#ffaa00';
+                ctx.beginPath();
+                ctx.arc(orbX, orbY, cellSize/4, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Sparkle
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(orbX - 3, orbY - 3, 2, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            
+            // Draw player with lantern light
+            const playerX = offsetX + gameState.player.x * cellSize + cellSize/2;
+            const playerY = offsetY + gameState.player.y * cellSize + cellSize/2;
+            const lightRadius = (gameState.fuel / gameState.maxFuel) * cellSize * 4 + cellSize;
+            
+            // Create darkness mask
+            ctx.save();
+            ctx.globalCompositeOperation = 'destination-in';
+            
+            // Draw light circle (this makes everything else transparent)
+            const lightGradient = ctx.createRadialGradient(playerX, playerY, 0, playerX, playerY, lightRadius);
+            lightGradient.addColorStop(0, 'rgba(0,0,0,1)');
+            lightGradient.addColorStop(0.7, 'rgba(0,0,0,0.7)');
+            lightGradient.addColorStop(1, 'rgba(0,0,0,0)');
+            
+            ctx.fillStyle = lightGradient;
+            ctx.beginPath();
+            ctx.arc(playerX, playerY, lightRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            
+            // Draw player lantern
+            ctx.fillStyle = '#ff6b35';
+            ctx.beginPath();
+            ctx.arc(playerX, playerY, cellSize/2.5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Lantern glow
+            ctx.shadowColor = '#ffa500';
+            ctx.shadowBlur = 20;
+            ctx.fillStyle = '#ffdd44';
+            ctx.beginPath();
+            ctx.arc(playerX, playerY, cellSize/4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+        
+        // Game logic
+        function movePlayer(dx, dy) {
+            if (!gameState.playing || gameState.paused) return;
+            
+            const newX = gameState.player.x + dx;
+            const newY = gameState.player.y + dy;
+            
+            // Check bounds and walls
+            if (newY >= 0 && newY < gameState.maze.length &&
+                newX >= 0 && newX < gameState.maze[0].length &&
+                gameState.maze[newY][newX] === 0) {
+                
+                gameState.player.x = newX;
+                gameState.player.y = newY;
+                
+                // Consume fuel
+                gameState.fuel -= 0.8;
+                
+                // Check fuel orb collection
+                gameState.fuelOrbs.forEach(orb => {
+                    if (!orb.collected && orb.x === newX && orb.y === newY) {
+                        orb.collected = true;
+                        gameState.fuel = Math.min(gameState.maxFuel, gameState.fuel + 20);
+                        gameState.score += 50 * gameState.level;
+                        createParticles(newX * cellSize + cellSize/2, newY * cellSize + cellSize/2);
+                    }
+                });
+                
+                // Check exit
+                if (newX === gameState.exit.x && newY === gameState.exit.y) {
+                    levelComplete();
+                }
+                
+                updateUI();
+                
+                // Check fuel depletion
+                if (gameState.fuel <= 0) {
+                    gameOver(false);
+                }
+            }
+        }
+        
+        function createParticles(x, y) {
+            const container = document.getElementById('game-container');
+            for (let i = 0; i < 8; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.left = (x + Math.random() * 40 - 20) + 'px';
+                particle.style.top = (y + Math.random() * 40 - 20) + 'px';
+                container.appendChild(particle);
+                setTimeout(() => particle.remove(), 2000);
+            }
+        }
+        
+        function levelComplete() {
+            gameState.score += 100 * gameState.level + Math.floor(gameState.fuel);
+            
+            if (gameState.mode === 'endless' || gameState.mode === 'adventure') {
+                gameState.level++;
+            }
+            
+            initLevel();
+        }
+        
+        function gameOver(won) {
+            gameState.playing = false;
+            const gameOverEl = document.getElementById('game-over');
+            gameOverEl.classList.remove('hidden');
+            
+            if (won) {
+                gameOverEl.classList.add('win');
+                document.getElementById('game-over-title').textContent = 'Level Complete!';
+            } else {
+                gameOverEl.classList.remove('win');
+                document.getElementById('game-over-title').textContent = 'Darkness Fell!';
+            }
+            
+            document.getElementById('final-score').textContent = 
+                `Score: ${gameState.score} | Level: ${gameState.level}`;
+        }
+        
+        // Input handling
+        const keys = {};
+        
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            
+            if (!gameState.playing) return;
+            
+            switch(e.key) {
+                case 'ArrowUp':
+                case 'w':
+                case 'W':
+                    movePlayer(0, -1);
+                    break;
+                case 'ArrowDown':
+                case 's':
+                case 'S':
+                    movePlayer(0, 1);
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                case 'A':
+                    movePlayer(-1, 0);
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                case 'D':
+                    movePlayer(1, 0);
+                    break;
+                case ' ':
+                    if (gameState.paused) {
+                        gameState.paused = false;
+                    } else {
+                        gameState.paused = true;
+                    }
+                    break;
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+        
+        // Touch controls
+        const touchActions = {
+            'touch-up': () => movePlayer(0, -1),
+            'touch-down': () => movePlayer(0, 1),
+            'touch-left': () => movePlayer(-1, 0),
+            'touch-right': () => movePlayer(1, 0)
+        };
+        
+        Object.keys(touchActions).forEach(id => {
+            const btn = document.getElementById(id);
+            btn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                touchActions[id]();
+            });
+            btn.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                touchActions[id]();
+            });
+        });
+        
+        // Button handlers
+        document.getElementById('btn-start').addEventListener('click', () => {
+            document.getElementById('menu-overlay').classList.add('hidden');
+            gameState.playing = true;
+            gameState.level = 1;
+            gameState.score = 0;
+            initLevel();
+        });
+        
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                gameState.mode = btn.dataset.mode;
+            });
+        });
+        
+        document.getElementById('btn-pause').addEventListener('click', () => {
+            gameState.paused = !gameState.paused;
+            document.getElementById('btn-pause').textContent = 
+                gameState.paused ? 'Resume' : 'Pause';
+        });
+        
+        document.getElementById('btn-restart').addEventListener('click', () => {
+            initLevel();
+        });
+        
+        document.getElementById('btn-menu').addEventListener('click', () => {
+            document.getElementById('game-over').classList.add('hidden');
+            document.getElementById('menu-overlay').classList.remove('hidden');
+            gameState.playing = false;
+        });
+        
+        document.getElementById('btn-retry').addEventListener('click', () => {
+            document.getElementById('game-over').classList.add('hidden');
+            gameState.playing = true;
+            initLevel();
+        });
+        
+        // Game loop
+        let lastMoveTime = 0;
+        
+        function gameLoop(timestamp) {
+            if (!gameState.lastTime) gameState.lastTime = timestamp;
+            const delta = timestamp - gameState.lastTime;
+            gameState.lastTime = timestamp;
+            
+            if (gameState.playing && !gameState.paused) {
+                // Auto-move fuel consumption over time
+                if (timestamp - lastMoveTime > 100) {
+                    gameState.fuel -= 0.1;
+                    if (gameState.fuel <= 0) {
+                        gameState.fuel = 0;
+                        gameOver(false);
+                    }
+                    updateUI();
+                    lastMoveTime = timestamp;
+                }
+            }
+            
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Initialize
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
